@@ -2,9 +2,11 @@ import './style.css';
 
 import Phaser from 'phaser';
 
-import { AnalyticsCollector, ConsoleSink, NoopSink } from './application/analytics';
+import { AnalyticsCollector, ConsoleSink, HttpBatchSink, NoopSink } from './application/analytics';
+import type { AnalyticsSink } from './application/analytics';
 import { GameController } from './application/GameController';
 import { FamobiPlatformAdapter } from './application/platform/FamobiPlatformAdapter';
+import { LocalEventQueueStorage } from './core/storage/EventQueueStorage';
 import { LocalGameStorage } from './core/storage/GameStorage';
 import { SnakeScene } from './game/scenes/SnakeScene';
 import { SnakeGame } from './game/snakeGame';
@@ -35,7 +37,12 @@ const simulation = new SnakeGame();
 const controller = new GameController(simulation, new LocalGameStorage());
 const platform = new FamobiPlatformAdapter();
 const disconnectPlatform = platform.connect(controller);
-const analyticsSink = import.meta.env.DEV ? new ConsoleSink() : new NoopSink();
+const analyticsEndpoint = import.meta.env.VITE_ANALYTICS_URL as string | undefined;
+const analyticsSink: AnalyticsSink = analyticsEndpoint
+  ? new HttpBatchSink({ endpoint: analyticsEndpoint, storage: new LocalEventQueueStorage() })
+  : import.meta.env.DEV
+    ? new ConsoleSink()
+    : new NoopSink();
 const analytics = new AnalyticsCollector(analyticsSink);
 const disconnectAnalytics = analytics.connect(controller);
 const snakeScene = new SnakeScene(controller);
