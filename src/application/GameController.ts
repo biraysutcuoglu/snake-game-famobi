@@ -170,6 +170,8 @@ export class GameController {
       this.events.emit('runStarted', {
         level: snapshot.level,
         runNumber: this.profile.totalRuns,
+        score: snapshot.score,
+        progress: snapshot.progress,
         occurredAt: now
       });
     }

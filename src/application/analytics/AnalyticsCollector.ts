@@ -51,8 +51,8 @@ export class AnalyticsCollector {
           runId: `${this.sessionId}-${event.runNumber}`,
           level: event.level,
           startedAt: event.occurredAt,
-          score: 0,
-          progress: 0,
+          score: event.score,
+          progress: event.progress,
           paused: false
         };
         this.track({
