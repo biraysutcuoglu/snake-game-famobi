@@ -81,7 +81,7 @@ export class GameController {
     const snapshot = this.simulation.getSnapshot();
     if (snapshot.phase === 'playing' || snapshot.phase === 'paused') this.simulation.quitToMenu();
     this.resetPauseState();
-    this.simulation.startAtLevel(level);
+    this.simulation.startAtLevel(level); // change the game state to playing
     this.audio.play('start');
   }
 

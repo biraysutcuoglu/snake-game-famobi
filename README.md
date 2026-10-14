@@ -11,6 +11,20 @@ The Famobi host script is loaded from `https://api.games.famobi.com/init.js`.
 When running outside the Famobi host, SDK initialization reports an error in the
 browser console and the game remains available for local development.
 
+When a run starts, the event flow is:
+
+```text
+SnakeGame changes phase to "playing"
+        ↓
+SnakeGame.emit()
+        ↓
+GameController.handleSnapshot(snapshot)
+        ↓
+GameController emits "runStarted"
+        ↓
+FamobiPlatformAdapter calls gameInterface.gameStart()
+```
+
 ## Gameplay
 
 - Clear three increasingly fast levels.
