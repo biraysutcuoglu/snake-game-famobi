@@ -17,7 +17,14 @@ export class EventBus<Events extends object> {
 
   emit<EventName extends keyof Events>(eventName: EventName, payload: Events[EventName]): void {
     const eventListeners = this.listeners.get(eventName) as Set<EventListener<Events[EventName]>> | undefined;
-    eventListeners?.forEach((listener) => listener(payload));
+    // A throwing listener must not stop the remaining listeners or the emitter.
+    eventListeners?.forEach((listener) => {
+      try {
+        listener(payload);
+      } catch (error) {
+        console.error(`Event listener for "${String(eventName)}" failed`, error);
+      }
+    });
   }
 
   clear(): void {

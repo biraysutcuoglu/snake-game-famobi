@@ -4,12 +4,13 @@ export type RunEndReason = 'complete' | 'fail' | 'quit';
 
 export type GameEventMap = {
   ready: { occurredAt: number };
-  runStarted: { level: number; runNumber: number; occurredAt: number };
+  runStarted: { level: number; runNumber: number; score: number; progress: number; occurredAt: number };
   runEnded: {
     level: number;
     score: number;
     progress: number;
     reason: RunEndReason;
+    failureReason: GameSnapshot['failureReason'];
     durationMs: number;
     occurredAt: number;
   };

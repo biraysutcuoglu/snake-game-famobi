@@ -4,3 +4,10 @@ dist/
 *.local
 *.log
 .env
+
+# Firebase emulator backend
+backend/functions/lib/
+backend/functions/src/shared/
+backend/.firebase/
+backend/*-debug.log
+backend/firebase-export-*/
