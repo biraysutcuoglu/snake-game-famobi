@@ -25,7 +25,8 @@ const parseBody = (body: unknown): unknown => {
 
 export const handleCollectEvents = async (
   request: CollectRequest,
-  store: EventStore
+  store: EventStore,
+  now: number = Date.now()
 ): Promise<CollectResponse> => {
   if (request.method !== 'POST') {
     return { status: 405, body: { error: 'Use POST' } };
@@ -46,7 +47,7 @@ export const handleCollectEvents = async (
   const valid: AnalyticsEvent[] = [];
   const errors: Array<{ index: number; error: string }> = [];
   events.forEach((item, index) => {
-    const result = validateAnalyticsEvent(item);
+    const result = validateAnalyticsEvent(item, now);
     if (result.ok) valid.push(result.event);
     else errors.push({ index, error: result.error });
   });

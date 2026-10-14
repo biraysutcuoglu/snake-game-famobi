@@ -42,28 +42,85 @@ export type AnalyticsEventBatch = { events: AnalyticsEvent[] };
 
 export const MAX_BATCH_SIZE = 100;
 
+/** Queued events may be sent long after they happened, but not indefinitely. */
+export const MAX_EVENT_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/** Tolerated player clock skew into the future. */
+export const MAX_FUTURE_SKEW_MS = 10 * 60 * 1000;
+
 const OUTCOMES: readonly string[] = ['complete', 'fail', 'quit'];
 const FAILURES: readonly string[] = ['wall', 'snake', 'obstacle', 'external'];
 const PAUSE_SOURCES: readonly string[] = ['player', 'system'];
 
-const isString = (value: unknown, maxLength = 128): value is string =>
-  typeof value === 'string' && value.length > 0 && value.length <= maxLength;
+/**
+ * Ids end up in Firestore document ids, so '/', '.', '..' and '__x__' must
+ * never get through. A conservative charset covers UUIDs and the fallback ids.
+ */
+const ID_PATTERN = /^(?!__.*__$)[A-Za-z0-9_-]{1,128}$/;
+const isId = (value: unknown): value is string => typeof value === 'string' && ID_PATTERN.test(value);
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
 export type ValidationResult = { ok: true; event: AnalyticsEvent } | { ok: false; error: string };
 
-/** Validates untrusted input and returns a copy containing only known fields. */
-export const validateAnalyticsEvent = (input: unknown): ValidationResult => {
+type OptionalField = Exclude<keyof AnalyticsEvent, 'eventId' | 'name' | 'timestamp' | 'sessionId'>;
+
+const OPTIONAL_FIELDS: readonly OptionalField[] = [
+  'runId',
+  'level',
+  'outcome',
+  'failureReason',
+  'score',
+  'progress',
+  'durationMs',
+  'pauseSource'
+];
+
+/** Which optional fields each event must carry and which it may carry. */
+const FIELD_RULES: Record<AnalyticsEventName, { required: OptionalField[]; allowed: OptionalField[] }> = {
+  session_start: { required: [], allowed: [] },
+  run_start: { required: ['runId', 'level'], allowed: [] },
+  run_end: {
+    required: ['runId', 'level', 'outcome', 'score', 'progress', 'durationMs'],
+    allowed: ['failureReason']
+  },
+  run_pause: { required: ['runId', 'level'], allowed: ['pauseSource'] },
+  run_resume: { required: ['runId', 'level'], allowed: ['pauseSource'] },
+  score_update: { required: ['runId', 'level', 'score'], allowed: [] }
+};
+
+const checkConsistency = (event: AnalyticsEvent): string | null => {
+  const rules = FIELD_RULES[event.name];
+  for (const field of rules.required) {
+    if (event[field] === undefined) return `${field} is required for ${event.name}`;
+  }
+  for (const field of OPTIONAL_FIELDS) {
+    if (event[field] !== undefined && !rules.required.includes(field) && !rules.allowed.includes(field)) {
+      return `${field} is not allowed for ${event.name}`;
+    }
+  }
+  if (event.failureReason !== undefined && event.outcome !== 'fail') {
+    return 'failureReason requires outcome "fail"';
+  }
+  return null;
+};
+
+/**
+ * Validates untrusted input and returns a copy containing only known fields.
+ * `now` anchors the timestamp window; pass it to keep a batch consistent.
+ */
+export const validateAnalyticsEvent = (input: unknown, now: number = Date.now()): ValidationResult => {
   if (typeof input !== 'object' || input === null) return { ok: false, error: 'event must be an object' };
   const raw = input as Record<string, unknown>;
 
-  if (!isString(raw.eventId)) return { ok: false, error: 'eventId is required' };
+  if (!isId(raw.eventId)) return { ok: false, error: 'invalid eventId' };
   if (!ANALYTICS_EVENT_NAMES.includes(raw.name as AnalyticsEventName)) {
     return { ok: false, error: 'unknown event name' };
   }
-  if (!isFiniteNumber(raw.timestamp) || raw.timestamp <= 0) return { ok: false, error: 'invalid timestamp' };
-  if (!isString(raw.sessionId)) return { ok: false, error: 'sessionId is required' };
+  if (!isFiniteNumber(raw.timestamp)) return { ok: false, error: 'invalid timestamp' };
+  if (raw.timestamp < now - MAX_EVENT_AGE_MS || raw.timestamp > now + MAX_FUTURE_SKEW_MS) {
+    return { ok: false, error: 'timestamp out of range' };
+  }
+  if (!isId(raw.sessionId)) return { ok: false, error: 'invalid sessionId' };
 
   const event: AnalyticsEvent = {
     eventId: raw.eventId,
@@ -73,7 +130,7 @@ export const validateAnalyticsEvent = (input: unknown): ValidationResult => {
   };
 
   if (raw.runId !== undefined) {
-    if (!isString(raw.runId)) return { ok: false, error: 'invalid runId' };
+    if (!isId(raw.runId)) return { ok: false, error: 'invalid runId' };
     event.runId = raw.runId;
   }
   if (raw.level !== undefined) {
@@ -108,6 +165,9 @@ export const validateAnalyticsEvent = (input: unknown): ValidationResult => {
     if (!PAUSE_SOURCES.includes(raw.pauseSource as string)) return { ok: false, error: 'invalid pauseSource' };
     event.pauseSource = raw.pauseSource as 'player' | 'system';
   }
+
+  const inconsistency = checkConsistency(event);
+  if (inconsistency) return { ok: false, error: inconsistency };
 
   return { ok: true, event };
 };
