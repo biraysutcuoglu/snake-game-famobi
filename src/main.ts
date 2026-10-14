@@ -2,6 +2,7 @@ import './style.css';
 
 import Phaser from 'phaser';
 
+import { AnalyticsCollector, ConsoleSink, NoopSink } from './application/analytics';
 import { GameController } from './application/GameController';
 import { FamobiPlatformAdapter } from './application/platform/FamobiPlatformAdapter';
 import { LocalGameStorage } from './core/storage/GameStorage';
@@ -34,6 +35,9 @@ const simulation = new SnakeGame();
 const controller = new GameController(simulation, new LocalGameStorage());
 const platform = new FamobiPlatformAdapter();
 const disconnectPlatform = platform.connect(controller);
+const analyticsSink = import.meta.env.DEV ? new ConsoleSink() : new NoopSink();
+const analytics = new AnalyticsCollector(analyticsSink);
+const disconnectAnalytics = analytics.connect(controller);
 const snakeScene = new SnakeScene(controller);
 let currentSnapshot = controller.getSnapshot();
 
@@ -203,7 +207,13 @@ void platform.initialize().catch((error: unknown) => {
   console.error('Famobi SDK initialization failed.', error);
 });
 
+window.addEventListener('pagehide', () => {
+  analytics.abandonActiveRun();
+  analyticsSink.flush();
+});
+
 window.addEventListener('beforeunload', () => {
+  disconnectAnalytics();
   disconnectPlatform();
   platform.dispose();
   controller.dispose();

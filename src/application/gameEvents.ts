@@ -10,6 +10,7 @@ export type GameEventMap = {
     score: number;
     progress: number;
     reason: RunEndReason;
+    failureReason: GameSnapshot['failureReason'];
     durationMs: number;
     occurredAt: number;
   };
