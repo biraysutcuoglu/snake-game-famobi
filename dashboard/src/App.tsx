@@ -1,6 +1,10 @@
 import { useState } from 'react';
 
 import { RANGE_OPTIONS, type RangeDays, type StatsResponse } from './api/stats';
+import { FailureReasons } from './components/FailureReasons';
+import { LevelOutcomes } from './components/LevelOutcomes';
+import { Overview } from './components/Overview';
+import { RunsOverTime } from './components/RunsOverTime';
 import { useStats } from './useStats';
 
 const isEmpty = (stats: StatsResponse): boolean => stats.totals.sessions === 0 && stats.totals.runs === 0;
@@ -44,7 +48,12 @@ export const App = () => {
               This period has more events than can be read at once, so the numbers cover only the most recent ones.
             </p>
           )}
-          <pre>{JSON.stringify(state.stats.totals, null, 2)}</pre>
+          <Overview stats={state.stats} />
+          <div className="grid">
+            <LevelOutcomes stats={state.stats} />
+            <RunsOverTime stats={state.stats} />
+            <FailureReasons stats={state.stats} />
+          </div>
         </>
       )}
     </main>

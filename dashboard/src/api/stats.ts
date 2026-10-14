@@ -1,6 +1,6 @@
 import type { StatsResponse } from '../../../src/shared/analyticsStats';
 
-export type { StatsResponse };
+export type { FailureReasonKey, StatsLevel, StatsResponse } from '../../../src/shared/analyticsStats';
 
 export const RANGE_OPTIONS = [7, 30] as const;
 export type RangeDays = (typeof RANGE_OPTIONS)[number];
