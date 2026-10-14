@@ -2,7 +2,14 @@
 
 A compact browser game built with Phaser 3, TypeScript, Vite, and a DOM-based interface.
 
-This repository is intentionally a small game only. It does not contain the Famobi SDK, analytics, a backend, or a dashboard.
+This repository is intentionally a small game only. It does not contain a
+bundled Famobi SDK package, analytics backend, or dashboard.
+
+The game integrates Famobi's `GameInterface` through
+[`FamobiPlatformAdapter`](src/application/platform/FamobiPlatformAdapter.ts).
+The Famobi host script is loaded from `https://api.games.famobi.com/init.js`.
+When running outside the Famobi host, SDK initialization reports an error in the
+browser console and the game remains available for local development.
 
 ## Gameplay
 
