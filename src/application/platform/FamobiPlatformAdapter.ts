@@ -36,17 +36,12 @@ const reportSdkError = (operation: string, error: unknown): void => {
 };
 
 export class FamobiPlatformAdapter implements PlatformSdk {
-  private gameInterface: GameInterface | null = null;
   private unsubscribers: Array<() => void> = [];
 
-  async initialize(): Promise<void> {
-    const gameInterface = getGameInterface();
-    await gameInterface.init([]);
-    this.gameInterface = gameInterface;
-  }
-
+  // GameInterface.init() is called by the page (index.html), which loads the game bundle
+  // through it. By the time this adapter exists, the SDK is initialised.
   connect(controller: GameController): () => void {
-    const gameInterface = this.gameInterface ?? getGameInterface();
+    const gameInterface = getGameInterface();
 
     const subscriptions = [
       controller.events.on('ready', () => {
@@ -91,6 +86,5 @@ export class FamobiPlatformAdapter implements PlatformSdk {
 
   dispose(): void {
     this.unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
-    this.gameInterface = null;
   }
 }

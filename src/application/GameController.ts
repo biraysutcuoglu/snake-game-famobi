@@ -58,6 +58,10 @@ export class GameController {
     return this.simulation.subscribe(listener);
   }
 
+  isReady(): boolean {
+    return this.ready;
+  }
+
   markReady(): void {
     if (this.ready) return;
     this.ready = true;

@@ -9,7 +9,10 @@
       content="Neon Snake, a compact browser game built with Phaser and TypeScript."
     />
     <title>Neon Snake</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/src/style.css" />
     <script src="https://api.games.famobi.com/init.js"></script>
+    <script src="./boot.js"></script>
   </head>
   <body>
     <main class="game-shell">
@@ -56,20 +59,22 @@
         <div id="game-container" class="phaser-container" aria-label="Snake playfield"></div>
 
         <div id="game-overlay" class="game-overlay">
-          <div class="overlay-card">
-            <span id="overlay-eyebrow" class="overlay-eyebrow">Three levels</span>
-            <h1 id="overlay-title">Ready to slither?</h1>
-            <p id="overlay-copy">Eat the fruit, avoid the walls, and clear every level.</p>
+          <div class="overlay-card" role="status" aria-busy="true">
+            <span id="overlay-eyebrow" class="overlay-eyebrow">Loading</span>
+            <h1 id="overlay-title">Warming up…</h1>
+            <p id="overlay-copy">Getting the grid ready.</p>
+            <span id="loading-spinner" class="spinner" aria-hidden="true"></span>
             <div id="level-select" class="level-select" hidden aria-label="Level selection">
               <button type="button" data-level="1">1</button>
               <button type="button" data-level="2">2</button>
               <button type="button" data-level="3">3</button>
             </div>
             <div class="overlay-actions">
-              <button id="primary-action" class="button button-primary" type="button">Start game</button>
+              <button id="primary-action" class="button button-primary" type="button" hidden>Start game</button>
               <button id="secondary-action" class="button button-secondary" type="button" hidden>
                 Main menu
               </button>
+              <button id="retry-action" class="button button-primary" type="button" hidden>Retry</button>
             </div>
           </div>
         </div>
@@ -85,7 +90,5 @@
         </div>
       </section>
     </main>
-
-    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
