@@ -101,7 +101,11 @@ export const start = (): void => {
   const disconnectPlatform = platform.connect(controller);
   const analyticsEndpoint = import.meta.env.VITE_ANALYTICS_URL as string | undefined;
   const analyticsSink: AnalyticsSink = analyticsEndpoint
-    ? new HttpBatchSink({ endpoint: analyticsEndpoint, storage: new LocalEventQueueStorage() })
+    ? new HttpBatchSink({
+        endpoint: analyticsEndpoint,
+        storage: new LocalEventQueueStorage(),
+        maxBatchSize: Number(import.meta.env.VITE_ANALYTICS_BATCH_SIZE) || undefined
+      })
     : import.meta.env.DEV
       ? new ConsoleSink()
       : new NoopSink();

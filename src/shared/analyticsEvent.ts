@@ -40,7 +40,8 @@ export type AnalyticsEvent = {
 
 export type AnalyticsEventBatch = { events: AnalyticsEvent[] };
 
-export const MAX_BATCH_SIZE = 100;
+// shared contract upper limit
+export const MAX_BATCH_SIZE = 100; 
 
 /** Queued events may be sent long after they happened, but not indefinitely. */
 export const MAX_EVENT_AGE_MS = 30 * 24 * 60 * 60 * 1000;
