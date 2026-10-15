@@ -2,42 +2,39 @@ import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { onRequest } from 'firebase-functions/v2/https';
 
-import { createFirestoreEventSource, createFirestoreStore } from './firestoreStore';
-import { handleCollectEvents } from './handler';
+import { createFirestoreAnalyticsStore } from './firestoreStore';
+import { createFirestoreStatsSource } from './firestoreStatsSource';
+import { handleCollectAnalytics } from './handler';
 import { handleGetStats } from './statsHandler';
 
 initializeApp();
 const db = getFirestore();
-const store = createFirestoreStore(db);
-const eventSource = createFirestoreEventSource(db);
+const store = createFirestoreAnalyticsStore(db);
+const statsSource = createFirestoreStatsSource(db);
 
-/**
- * POST {"events": [...]} -> {"accepted", "duplicates", "rejected"}.
- * CORS is open because the endpoint only accepts validated analytics events
- * and the browser has no credentials to protect.
- */
-export const collectEvents = onRequest({ cors: true, maxInstances: 10 }, async (req, res) => {
+/** Accepts one session/run lifecycle command per request. */
+export const collectAnalytics = onRequest({ cors: true, maxInstances: 10 }, async (req, res) => {
+  const contentLength = Number(req.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > 16_384) {
+    res.status(413).json({ accepted: false, error: 'Request body is too large' });
+    return;
+  }
+
   try {
-    const { status, body } = await handleCollectEvents({ method: req.method, body: req.body }, store);
-    res.status(status).json(body);
+    const response = await handleCollectAnalytics({ method: req.method, body: req.body }, store);
+    res.status(response.status).json(response.body);
   } catch (error) {
-    console.error('collectEvents failed', error);
-    // 5xx makes the game keep the events and retry.
-    res.status(500).json({ error: 'Internal error' });
+    console.error('collectAnalytics failed', error);
+    res.status(500).json({ accepted: false, error: 'Internal error' });
   }
 });
 
-/**
- * GET ?days=7 -> aggregated StatsResponse (see src/shared/analyticsStats.ts).
- * Returns aggregates only, never raw events or session ids. Open like
- * collectEvents; add authentication before pointing it at real data.
- */
+/** Returns dashboard aggregates, never raw session or run documents. */
 export const getStats = onRequest({ cors: true, maxInstances: 10 }, async (req, res) => {
   try {
-    const { status, body } = await handleGetStats({ method: req.method, query: req.query }, eventSource);
-    // Short cache keeps a refreshing dashboard from re-reading thousands of documents.
-    if (status === 200) res.set('Cache-Control', 'public, max-age=60');
-    res.status(status).json(body);
+    const response = await handleGetStats({ method: req.method, query: req.query }, statsSource);
+    if (response.status === 200) res.set('Cache-Control', 'public, max-age=60');
+    res.status(response.status).json(response.body);
   } catch (error) {
     console.error('getStats failed', error);
     res.status(500).json({ error: 'Internal error' });

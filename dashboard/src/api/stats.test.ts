@@ -7,7 +7,7 @@ const valid = {
   totals: { sessions: 1, runs: 1, finishedRuns: 0, completionRate: null, avgDurationMs: null, avgScore: null },
   byDay: [],
   byLevel: [],
-  failureReasons: { wall: 0, snake: 0, obstacle: 0, external: 0 },
+  failureReasons: { wall: 0, self: 0 },
   truncated: false
 };
 

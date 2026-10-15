@@ -45,7 +45,7 @@ export const App = () => {
         <>
           {state.stats.truncated && (
             <p className="notice" role="note">
-              This period has more events than can be read at once, so the numbers cover only the most recent ones.
+              This period has more sessions or runs than can be read at once, so the numbers cover only the most recent ones.
             </p>
           )}
           <Overview stats={state.stats} />

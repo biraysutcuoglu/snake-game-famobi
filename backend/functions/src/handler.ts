@@ -1,19 +1,15 @@
-import { MAX_BATCH_SIZE, validateAnalyticsEvent, type AnalyticsEvent } from './shared/analyticsEvent';
+import { validateAnalyticsRequest } from './analyticsValidation';
+import type { AnalyticsRequest, AnalyticsWriteResult } from './shared/analyticsRequest';
 
-export type SaveResult = { stored: number; duplicates: number };
+export class AnalyticsConflictError extends Error {}
 
-/** Persistence port, so the request logic can be tested without Firestore. */
-export type EventStore = {
-  save(events: AnalyticsEvent[]): Promise<SaveResult>;
+export type AnalyticsStore = {
+  apply(request: AnalyticsRequest): Promise<AnalyticsWriteResult>;
 };
 
 export type CollectRequest = { method: string; body: unknown };
 export type CollectResponse = { status: number; body: Record<string, unknown> };
 
-/**
- * The game sends text/plain (to avoid a CORS preflight and to work with
- * sendBeacon), so the body may arrive as a string or as parsed JSON.
- */
 const parseBody = (body: unknown): unknown => {
   if (typeof body !== 'string') return body;
   try {
@@ -23,40 +19,23 @@ const parseBody = (body: unknown): unknown => {
   }
 };
 
-export const handleCollectEvents = async (
+export const handleCollectAnalytics = async (
   request: CollectRequest,
-  store: EventStore,
+  store: AnalyticsStore,
   now: number = Date.now()
 ): Promise<CollectResponse> => {
-  if (request.method !== 'POST') {
-    return { status: 405, body: { error: 'Use POST' } };
-  }
+  if (request.method !== 'POST') return { status: 405, body: { error: 'Use POST' } };
 
-  const payload = parseBody(request.body);
-  const events = (payload as { events?: unknown } | undefined)?.events;
-  if (!Array.isArray(events)) {
-    return { status: 400, body: { error: 'Body must be {"events": [...]}' } };
-  }
-  if (events.length === 0) {
-    return { status: 200, body: { accepted: 0, rejected: 0, duplicates: 0 } };
-  }
-  if (events.length > MAX_BATCH_SIZE) {
-    return { status: 413, body: { error: `At most ${MAX_BATCH_SIZE} events per request` } };
-  }
+  const validation = validateAnalyticsRequest(parseBody(request.body), now);
+  if (!validation.ok) return { status: 400, body: { error: validation.error } };
 
-  const valid: AnalyticsEvent[] = [];
-  const errors: Array<{ index: number; error: string }> = [];
-  events.forEach((item, index) => {
-    const result = validateAnalyticsEvent(item, now);
-    if (result.ok) valid.push(result.event);
-    else errors.push({ index, error: result.error });
-  });
-
-  const { stored, duplicates } = valid.length > 0 ? await store.save(valid) : { stored: 0, duplicates: 0 };
-
-  // Invalid events are reported but never fail the batch; retrying cannot fix them.
-  return {
-    status: 200,
-    body: { accepted: stored, duplicates, rejected: errors.length, ...(errors.length > 0 ? { errors } : {}) }
-  };
+  try {
+    const result = await store.apply(validation.request);
+    return { status: result === 'created' ? 201 : 200, body: { accepted: true, result } };
+  } catch (error) {
+    if (error instanceof AnalyticsConflictError) {
+      return { status: 409, body: { accepted: false, error: error.message } };
+    }
+    throw error;
+  }
 };

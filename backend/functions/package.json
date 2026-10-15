@@ -1,7 +1,7 @@
 {
   "name": "neon-snake-analytics-functions",
   "private": true,
-  "description": "Analytics collection backend for Neon Snake, run on the Firebase Local Emulator Suite.",
+  "description": "Firebase Functions analytics backend for Neon Snake.",
   "main": "lib/index.js",
   "engines": { "node": "22" },
   "packageManager": "pnpm@11.1.3",

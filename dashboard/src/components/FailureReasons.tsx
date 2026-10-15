@@ -6,9 +6,7 @@ import { AXIS_TICK, GRID, SERIES, TOOLTIP_STYLE } from './chartParts';
 
 const LABELS: Record<FailureReasonKey, string> = {
   wall: 'Hit a wall',
-  snake: 'Hit own tail',
-  obstacle: 'Hit an obstacle',
-  external: 'Interrupted'
+  self: 'Hit own tail'
 };
 
 export const FailureReasons = ({ stats }: { stats: StatsResponse }) => {

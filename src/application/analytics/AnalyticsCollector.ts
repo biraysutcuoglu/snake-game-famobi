@@ -1,15 +1,7 @@
-import type { AnalyticsEvent, RunOutcome } from '../../shared/analyticsEvent';
+import type { RunDocument, RunStatus, SessionDocument } from '../../shared/analyticsDocument';
+import type { GameSnapshot } from '../../game/types';
 import type { GameController } from '../GameController';
-import type { AnalyticsSink } from './AnalyticsSink';
-
-type ActiveRun = {
-  runId: string;
-  level: number;
-  startedAt: number;
-  score: number;
-  progress: number;
-  paused: boolean;
-};
+import type { AnalyticsClient } from './AnalyticsClient';
 
 type CollectorOptions = {
   now?: () => number;
@@ -19,21 +11,37 @@ type CollectorOptions = {
 const defaultCreateId = (): string =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
+        const random = Math.floor(Math.random() * 16);
+        const value = character === 'x' ? random : (random & 0x3) | 0x8;
+        return value.toString(16);
+      });
+
+const statusFor = (
+  outcome: 'complete' | 'fail' | 'quit',
+  failureReason: GameSnapshot['failureReason']
+): RunStatus => {
+  if (outcome === 'complete') return 'SUCCESS';
+  if (outcome === 'quit' || failureReason === 'external') return 'QUIT';
+  if (failureReason === 'snake') return 'FAIL_SELF';
+  // Static obstacles are treated as walls by the new storage contract.
+  return 'FAIL_WALL';
+};
 
 /**
- * Translates controller events into analytics events. It only observes the
- * controller; a failing sink can never affect gameplay.
+ * Observes controller events and projects them into Firestore-ready session
+ * and run documents. A failing analytics client can never affect gameplay.
  */
 export class AnalyticsCollector {
   readonly sessionId: string;
 
-  private activeRun: ActiveRun | null = null;
+  private session: SessionDocument | null = null;
+  private activeRun: RunDocument | null = null;
   private readonly now: () => number;
   private readonly createId: () => string;
 
   constructor(
-    private readonly sink: AnalyticsSink,
+    private readonly client: AnalyticsClient,
     options: CollectorOptions = {}
   ) {
     this.now = options.now ?? Date.now;
@@ -44,100 +52,81 @@ export class AnalyticsCollector {
   connect(controller: GameController): () => void {
     const subscriptions = [
       controller.events.on('ready', (event) => {
-        this.track({ name: 'session_start', timestamp: event.occurredAt });
+        if (this.session) return;
+        this.session = {
+          sessionId: this.sessionId,
+          startTime: event.occurredAt,
+          endTime: null,
+          runsPlayed: 0
+        };
+        this.emitSession(this.session);
       }),
       controller.events.on('runStarted', (event) => {
         this.activeRun = {
-          runId: `${this.sessionId}-${event.runNumber}`,
+          sessionId: this.sessionId,
+          runId: this.createId(),
           level: event.level,
-          startedAt: event.occurredAt,
+          startTime: event.occurredAt,
+          endTime: null,
           score: event.score,
-          progress: event.progress,
-          paused: false
+          status: 'IN_PROGRESS'
         };
-        this.track({
-          name: 'run_start',
-          timestamp: event.occurredAt,
-          runId: this.activeRun.runId,
-          level: event.level
-        });
+        this.emitRun(this.activeRun);
       }),
       controller.events.on('scoreChanged', (event) => {
-        const run = this.activeRun;
-        if (!run) return;
-        run.score = event.score;
-        // Score resets to 0 when a run begins; only record gains.
-        if (event.delta <= 0) return;
-        this.track({ name: 'score_update', runId: run.runId, level: event.level, score: event.score });
+        if (this.activeRun) this.activeRun.score = event.score;
       }),
-      controller.events.on('progressChanged', (event) => {
-        if (this.activeRun) this.activeRun.progress = event.progress;
-      }),
-      controller.events.on('pauseChanged', (event) => {
-        const run = this.activeRun;
-        if (!run || run.paused === event.paused) return;
-        run.paused = event.paused;
-        this.track({
-          name: event.paused ? 'run_pause' : 'run_resume',
-          runId: run.runId,
-          level: run.level,
-          ...(event.source ? { pauseSource: event.source } : {})
-        });
-      }),
+      // Keep observing the full game lifecycle. These events do not add fields
+      // to the current Firestore document shapes.
+      controller.events.on('progressChanged', () => {}),
+      controller.events.on('pauseChanged', () => {}),
       controller.events.on('runEnded', (event) => {
-        const run = this.activeRun;
-        this.activeRun = null;
-        this.track({
-          name: 'run_end',
-          timestamp: event.occurredAt,
-          runId: run?.runId,
-          level: event.level,
-          outcome: event.reason,
-          ...(event.failureReason ? { failureReason: event.failureReason } : {}),
-          score: event.score,
-          progress: event.progress,
-          durationMs: event.durationMs
-        });
+        this.finishRun(event.occurredAt, event.score, statusFor(event.reason, event.failureReason));
       })
     ];
 
     return () => subscriptions.forEach((unsubscribe) => unsubscribe());
   }
 
-  /**
-   * Call when the page is going away. If a run is in progress the controller
-   * will never report its end, so record it as quit here.
-   */
-  abandonActiveRun(): void {
-    const run = this.activeRun;
-    if (!run) return;
-    this.activeRun = null;
-    const timestamp = this.now();
-    this.track({
-      name: 'run_end',
-      timestamp,
-      runId: run.runId,
-      level: run.level,
-      outcome: 'quit' satisfies RunOutcome,
-      score: run.score,
-      progress: run.progress,
-      durationMs: Math.max(0, timestamp - run.startedAt)
-    });
+  /** Finalizes an active run and the session when the page is going away. */
+  endSession(): void {
+    const endTime = this.now();
+    if (this.activeRun) this.finishRun(endTime, this.activeRun.score, 'QUIT');
+    if (!this.session || this.session.endTime !== null) return;
+
+    this.session.endTime = endTime;
+    this.emitSession(this.session);
   }
 
-  private track(
-    partial: Omit<AnalyticsEvent, 'eventId' | 'sessionId' | 'timestamp'> & { timestamp?: number }
-  ): void {
-    const event: AnalyticsEvent = {
-      ...partial,
-      eventId: this.createId(),
-      sessionId: this.sessionId,
-      timestamp: partial.timestamp ?? this.now()
-    };
+  private finishRun(endTime: number, score: number, status: RunStatus): void {
+    const run = this.activeRun;
+    if (!run) return;
+
+    this.activeRun = null;
+    run.endTime = endTime;
+    run.score = score;
+    run.status = status;
+    this.emitRun(run);
+
+    if (this.session) {
+      this.session.runsPlayed += 1;
+      this.emitSession(this.session);
+    }
+  }
+
+  private emitSession(session: SessionDocument): void {
     try {
-      this.sink.track(event);
+      this.client.trackSession({ ...session });
     } catch (error) {
-      console.error('Analytics sink failed', error);
+      console.error('Analytics client failed', error);
+    }
+  }
+
+  private emitRun(run: RunDocument): void {
+    try {
+      this.client.trackRun({ ...run });
+    } catch (error) {
+      console.error('Analytics client failed', error);
     }
   }
 }

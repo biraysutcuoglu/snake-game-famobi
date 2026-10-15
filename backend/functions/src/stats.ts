@@ -1,4 +1,4 @@
-import type { AnalyticsEvent } from './shared/analyticsEvent';
+import type { RunDocument, SessionDocument } from './shared/analyticsDocument';
 import type { FailureReasonKey, StatsDay, StatsLevel, StatsResponse } from './shared/analyticsStats';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -6,127 +6,95 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export type StatsRange = { from: number; to: number };
 
 const dayKey = (timestamp: number): string => new Date(timestamp).toISOString().slice(0, 10);
-
 const average = (sum: number, count: number): number | null => (count === 0 ? null : sum / count);
 
 type LevelAcc = {
-  starts: Set<string>;
-  ended: Map<string, { outcome: 'complete' | 'fail' | 'quit'; score: number }>;
+  starts: number;
+  complete: number;
+  fail: number;
+  quit: number;
+  scoreSum: number;
+  finished: number;
 };
 
-/**
- * Pure aggregation over validated events. Runs are counted by runId so a
- * duplicate delivery or a repeated run_end cannot inflate the numbers.
- * Events outside [from, to] are ignored.
- */
+/** Pure aggregation over session/run documents whose starts fall in the range. */
 export const computeStats = (
-  events: readonly AnalyticsEvent[],
+  allSessions: readonly SessionDocument[],
+  allRuns: readonly RunDocument[],
   range: StatsRange,
   truncated = false
 ): StatsResponse => {
-  const sessions = new Set<string>();
-  const startedRuns = new Set<string>();
-  const endedRuns = new Map<string, AnalyticsEvent>();
+  const sessions = allSessions.filter(
+    (session) => session.startTime >= range.from && session.startTime <= range.to
+  );
+  const runs = allRuns.filter((run) => run.startTime >= range.from && run.startTime <= range.to);
+  const finishedRuns = runs.filter((run) => run.status !== 'IN_PROGRESS' && run.endTime !== null);
+  const daySessions = new Map<string, number>();
+  const dayRuns = new Map<string, number>();
   const levels = new Map<number, LevelAcc>();
-  const daySessions = new Map<string, Set<string>>();
-  const dayRuns = new Map<string, Set<string>>();
 
-  const levelAcc = (level: number): LevelAcc => {
-    let acc = levels.get(level);
-    if (!acc) {
-      acc = { starts: new Set(), ended: new Map() };
-      levels.set(level, acc);
+  for (const session of sessions) {
+    const day = dayKey(session.startTime);
+    daySessions.set(day, (daySessions.get(day) ?? 0) + 1);
+  }
+
+  for (const run of runs) {
+    const day = dayKey(run.startTime);
+    dayRuns.set(day, (dayRuns.get(day) ?? 0) + 1);
+    let level = levels.get(run.level);
+    if (!level) {
+      level = { starts: 0, complete: 0, fail: 0, quit: 0, scoreSum: 0, finished: 0 };
+      levels.set(run.level, level);
     }
-    return acc;
-  };
-  const addTo = (map: Map<string, Set<string>>, key: string, value: string) => {
-    let set = map.get(key);
-    if (!set) {
-      set = new Set();
-      map.set(key, set);
-    }
-    set.add(value);
-  };
+    level.starts += 1;
+    if (run.status === 'IN_PROGRESS') continue;
 
-  for (const event of events) {
-    if (event.timestamp < range.from || event.timestamp > range.to) continue;
-
-    const day = dayKey(event.timestamp);
-    sessions.add(event.sessionId);
-    addTo(daySessions, day, event.sessionId);
-
-    if (event.name === 'run_start' && event.runId !== undefined && event.level !== undefined) {
-      startedRuns.add(event.runId);
-      addTo(dayRuns, day, event.runId);
-      levelAcc(event.level).starts.add(event.runId);
-    } else if (
-      event.name === 'run_end' &&
-      event.runId !== undefined &&
-      event.level !== undefined &&
-      event.outcome !== undefined
-    ) {
-      if (!endedRuns.has(event.runId)) {
-        endedRuns.set(event.runId, event);
-        levelAcc(event.level).ended.set(event.runId, {
-          outcome: event.outcome,
-          score: event.score ?? 0
-        });
-      }
-    }
+    level.finished += 1;
+    level.scoreSum += run.score;
+    if (run.status === 'SUCCESS') level.complete += 1;
+    else if (run.status === 'QUIT') level.quit += 1;
+    else level.fail += 1;
   }
 
   let completed = 0;
   let scoreSum = 0;
   let durationSum = 0;
-  const failureReasons: Record<FailureReasonKey, number> = { wall: 0, snake: 0, obstacle: 0, external: 0 };
-  for (const end of endedRuns.values()) {
-    if (end.outcome === 'complete') completed += 1;
-    scoreSum += end.score ?? 0;
-    durationSum += end.durationMs ?? 0;
-    if (end.outcome === 'fail' && end.failureReason !== undefined) failureReasons[end.failureReason] += 1;
+  const failureReasons: Record<FailureReasonKey, number> = { wall: 0, self: 0 };
+  for (const run of finishedRuns) {
+    if (run.status === 'SUCCESS') completed += 1;
+    if (run.status === 'FAIL_WALL') failureReasons.wall += 1;
+    if (run.status === 'FAIL_SELF') failureReasons.self += 1;
+    scoreSum += run.score;
+    durationSum += Math.max(0, run.endTime! - run.startTime);
   }
 
   const byLevel: StatsLevel[] = [...levels.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([level, acc]) => {
-      let complete = 0;
-      let fail = 0;
-      let quit = 0;
-      let levelScore = 0;
-      for (const { outcome, score } of acc.ended.values()) {
-        if (outcome === 'complete') complete += 1;
-        else if (outcome === 'fail') fail += 1;
-        else quit += 1;
-        levelScore += score;
-      }
-      const ended = acc.ended.size;
-      return {
-        level,
-        starts: acc.starts.size,
-        complete,
-        fail,
-        quit,
-        completionRate: average(complete, ended),
-        avgScore: average(levelScore, ended)
-      };
-    });
+    .map(([level, value]) => ({
+      level,
+      starts: value.starts,
+      complete: value.complete,
+      fail: value.fail,
+      quit: value.quit,
+      completionRate: average(value.complete, value.finished),
+      avgScore: average(value.scoreSum, value.finished)
+    }));
 
-  // Zero-filled so a quiet day shows up as 0 instead of a gap in the chart.
   const byDay: StatsDay[] = [];
-  for (let t = Date.parse(dayKey(range.from)); t <= range.to; t += DAY_MS) {
-    const date = dayKey(t);
-    byDay.push({ date, sessions: daySessions.get(date)?.size ?? 0, runs: dayRuns.get(date)?.size ?? 0 });
+  for (let timestamp = Date.parse(dayKey(range.from)); timestamp <= range.to; timestamp += DAY_MS) {
+    const date = dayKey(timestamp);
+    byDay.push({ date, sessions: daySessions.get(date) ?? 0, runs: dayRuns.get(date) ?? 0 });
   }
 
   return {
     range: { from: range.from, to: range.to, days: byDay.length },
     totals: {
-      sessions: sessions.size,
-      runs: startedRuns.size,
-      finishedRuns: endedRuns.size,
-      completionRate: average(completed, endedRuns.size),
-      avgDurationMs: average(durationSum, endedRuns.size),
-      avgScore: average(scoreSum, endedRuns.size)
+      sessions: sessions.length,
+      runs: runs.length,
+      finishedRuns: finishedRuns.length,
+      completionRate: average(completed, finishedRuns.length),
+      avgDurationMs: average(durationSum, finishedRuns.length),
+      avgScore: average(scoreSum, finishedRuns.length)
     },
     byDay,
     byLevel,
