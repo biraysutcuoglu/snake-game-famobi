@@ -32,6 +32,14 @@ pnpm dashboard:dev       # the dashboard
 
 Open the local URLs that Vite prints. The env files `.env.development` and `dashboard/.env.development` already point both apps at the emulator.
 
+The game development command builds and serves the complete game bundle before opening it:
+
+- `pnpm dev` delegates to `pnpm dev:emulator`.
+- `pnpm dev:emulator` runs `build:emulator`, then serves `dist/` with `vite preview`.
+- `pnpm build:emulator` type-checks the project, builds the page and the separate `game.js` bundle with development environment variables, and injects the bundle size into `boot.js`.
+
+The separate `game.js` build is required because [`public/boot.js`](public/boot.js) hands that bundle to `GameInterface.init()`. Running Vite's development server alone would serve `boot.js` without generating the standalone game bundle. Use `pnpm build` for a production build; it uses production environment variables and does not embed the local emulator URL.
+
 ## Test the complete flow locally
 
 1. Start the emulators, the game and the dashboard as above.
