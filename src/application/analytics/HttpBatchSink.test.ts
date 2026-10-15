@@ -137,6 +137,30 @@ describe('HttpBatchSink', () => {
     expect(fetchMock.mock.calls[0][1].keepalive).toBe(true);
   });
 
+  it('sends fetch batches as text/plain so no CORS preflight is needed', async () => {
+    const { sink, fetchMock } = create();
+    sink.track(event('end', 'run_end'));
+    await vi.advanceTimersByTimeAsync(0);
+
+    const init = fetchMock.mock.calls[0][1];
+    expect(init.headers).toEqual({ 'Content-Type': 'text/plain;charset=UTF-8' });
+    expect(JSON.parse(init.body).events.map((e: AnalyticsEvent) => e.eventId)).toEqual(['end']);
+  });
+
+  it('sends beacon batches as text/plain, because sendBeacon cannot complete a preflight', async () => {
+    const sendBeacon = vi.fn().mockReturnValue(true);
+    const { sink } = create({ sendBeacon });
+    sink.track(event('a'));
+
+    sink.flush();
+
+    const blob = sendBeacon.mock.calls[0][1] as Blob;
+    // Blob normalizes its type to lowercase, so compare case-insensitively.
+    expect(blob.type.toLowerCase()).toBe('text/plain;charset=utf-8');
+    const body = JSON.parse(await blob.text()) as { events: AnalyticsEvent[] };
+    expect(body.events.map((e) => e.eventId)).toEqual(['a']);
+  });
+
   it('caps the queue by dropping the oldest events', () => {
     const { sink } = create({ maxQueueSize: 3, flushIntervalMs: 10_000, maxBatchSize: 100 });
     ['a', 'b', 'c', 'd', 'e'].forEach((id) => sink.track(event(id)));
