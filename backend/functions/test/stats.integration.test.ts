@@ -1,4 +1,4 @@
-// Runs against the Firebase Local Emulator Suite (npm run test:integration).
+// Runs against the Firebase Local Emulator Suite (pnpm test:integration).
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { beforeAll, describe, expect, it } from 'vitest';

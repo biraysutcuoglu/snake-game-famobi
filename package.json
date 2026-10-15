@@ -4,7 +4,9 @@
   "description": "A small browser game starter for the Famobi development challenge.",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "pnpm run dev:emulator",
+    "dev:emulator": "pnpm run build:emulator && vite preview",
+    "build:emulator": "tsc --noEmit && vite build --mode development && vite build --mode development --config vite.game.config.ts && node scripts/inject-game-size.mjs",
     "build": "tsc --noEmit && vite build && vite build --config vite.game.config.ts && node scripts/inject-game-size.mjs",
     "preview": "vite preview",
     "check": "tsc --noEmit",
@@ -13,10 +15,10 @@
     "dashboard:dev": "npm --prefix dashboard run dev",
     "dashboard:build": "npm --prefix dashboard run build",
     "dashboard:test": "npm --prefix dashboard test",
-    "backend:install": "npm --prefix backend/functions install",
-    "emulators": "npm --prefix backend/functions run emulators",
-    "backend:test": "npm --prefix backend/functions test",
-    "backend:test:integration": "npm --prefix backend/functions run test:integration"
+    "backend:install": "pnpm --dir backend/functions install",
+    "emulators": "pnpm --dir backend/functions run emulators",
+    "backend:test": "pnpm --dir backend/functions test",
+    "backend:test:integration": "pnpm --dir backend/functions run test:integration"
   },
   "dependencies": {
     "phaser": "3.90.0"

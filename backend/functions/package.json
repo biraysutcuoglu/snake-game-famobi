@@ -4,13 +4,14 @@
   "description": "Analytics collection backend for Neon Snake, run on the Firebase Local Emulator Suite.",
   "main": "lib/index.js",
   "engines": { "node": "22" },
+  "packageManager": "pnpm@11.1.3",
   "scripts": {
     "sync-shared": "node scripts/sync-shared.mjs",
-    "build": "npm run sync-shared && tsc",
-    "typecheck": "npm run sync-shared && tsc --noEmit",
-    "test": "npm run sync-shared && vitest run src",
-    "test:integration": "npm run build && firebase emulators:exec --only functions,firestore --project demo-neon-snake \"vitest run test/\"",
-    "emulators": "npm run build && firebase emulators:start --project demo-neon-snake"
+    "build": "pnpm run sync-shared && tsc",
+    "typecheck": "pnpm run sync-shared && tsc --noEmit",
+    "test": "pnpm run sync-shared && vitest run src",
+    "test:integration": "pnpm run build && firebase emulators:exec --only functions,firestore --project demo-neon-snake \"vitest run test/\"",
+    "emulators": "pnpm run build && firebase emulators:start --project demo-neon-snake"
   },
   "dependencies": {
     "firebase-admin": "^13.10.0",
