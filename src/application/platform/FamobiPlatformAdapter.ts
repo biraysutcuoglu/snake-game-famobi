@@ -7,6 +7,7 @@ type EventParams = {
 
 type GameInterface = {
   init(load: Array<string | (() => void)>): Promise<void>;
+  sendPreloadProgress(progress: number): void;
   gameReady(isPlayerReady?: boolean): void;
   gameStart(level?: number, params?: EventParams): Promise<void>;
   gameEnd(reason: 'complete' | 'fail' | 'quit', params?: EventParams): Promise<void>;
