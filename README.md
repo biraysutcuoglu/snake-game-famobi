@@ -104,6 +104,7 @@ flowchart LR
 - **Checked twice.** The game creates events only through `AnalyticsCollector`, so wrong types fail the TypeScript build. The backend validates every event again.
 - **Game events and analytics are decoupled.** `GameController` emits on an `EventBus`, and `AnalyticsCollector` subscribes to it. A failing sink is caught and logged, so it can never affect gameplay.
 - **Reliable delivery.** Events wait in a `localStorage` queue (max 500) and are removed only after the server accepts them. The queue is sent every 5 s, when 20 events are waiting, or right after `run_end`. Network errors, 5xx, 408 and 429 are retried with backoff up to 60 s. Other 4xx responses are dropped because retrying won't help. Requests use `text/plain` to avoid a CORS preflight.
+- **When a batch is sent.** Four triggers: 20 events are waiting, a `run_end` happens, 5 s pass after the first waiting event, or the page is hidden (see *Tab closing*). Only one request is in flight at a time.
 - **Tab closing.** When the page is hidden ([`src/main.ts`](src/main.ts)), an unfinished run is recorded as `quit` and the queue is sent with `navigator.sendBeacon`, which the browser delivers after the page unloads. If that fails, a `fetch` with `keepalive` is used. Unsent events stay in `localStorage` for the next visit. 
 - **Run grouping.** `AnalyticsCollector` sets each run's `runId` to `<sessionId>-<run number>` when the run starts, and every event in that run uses it. The run number comes from the saved profile's total runs. The session id keeps it unique across page loads.
 - **Idempotent backend.** Each event is saved under its `eventId` with `create()`. A resent event is counted as a duplicate instead of being stored twice. If storage fails, the function returns 500 so the game retries.
@@ -179,6 +180,7 @@ Example:
 - The dashboard refreshes by polling, not by live updates.
 - Emulator data is lost when the emulators stop.
 - Outside the Famobi host the Famobi SDK logs an error in the console. The game still works.
+- Analytics queue is shared across tabs of the same origin through one localStorage key, with last-writer-wins saves. If one tab removes its sent events, it can also drop events that another tab still holds in memory but has not sent yet. If that tab closes or crashes before sending them, those events are lost. Fix: one key per tab, or merge on load.
 
 ## License
 
