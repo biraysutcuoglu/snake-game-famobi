@@ -14,6 +14,8 @@ type LevelAcc = {
   fail: number;
   quit: number;
   scoreSum: number;
+  scoreCount: number;
+  durationSum: number;
   finished: number;
 };
 
@@ -28,6 +30,9 @@ export const computeStats = (
     (session) => session.startTime >= range.from && session.startTime <= range.to
   );
   const runs = allRuns.filter((run) => run.startTime >= range.from && run.startTime <= range.to);
+  const selectedSessionIds = new Set(sessions.map((session) => session.sessionId));
+  const runsInSelectedSessions = runs.filter((run) => selectedSessionIds.has(run.sessionId));
+  const finishedSessions = sessions.filter((session) => session.endTime !== null);
   const finishedRuns = runs.filter((run) => run.status !== 'IN_PROGRESS' && run.endTime !== null);
   const daySessions = new Map<string, number>();
   const dayRuns = new Map<string, number>();
@@ -43,30 +48,47 @@ export const computeStats = (
     dayRuns.set(day, (dayRuns.get(day) ?? 0) + 1);
     let level = levels.get(run.level);
     if (!level) {
-      level = { starts: 0, complete: 0, fail: 0, quit: 0, scoreSum: 0, finished: 0 };
+      level = {
+        starts: 0,
+        complete: 0,
+        fail: 0,
+        quit: 0,
+        scoreSum: 0,
+        scoreCount: 0,
+        durationSum: 0,
+        finished: 0
+      };
       levels.set(run.level, level);
     }
     level.starts += 1;
-    if (run.status === 'IN_PROGRESS') continue;
+    if (run.status === 'IN_PROGRESS' || run.endTime === null) continue;
 
     level.finished += 1;
-    level.scoreSum += run.score;
+    level.durationSum += Math.max(0, run.endTime - run.startTime);
     if (run.status === 'SUCCESS') level.complete += 1;
     else if (run.status === 'QUIT') level.quit += 1;
     else level.fail += 1;
+    if (run.status !== 'QUIT') {
+      level.scoreSum += run.score;
+      level.scoreCount += 1;
+    }
   }
 
   let completed = 0;
   let scoreSum = 0;
-  let durationSum = 0;
   const failureReasons: Record<FailureReasonKey, number> = { wall: 0, self: 0 };
   for (const run of finishedRuns) {
     if (run.status === 'SUCCESS') completed += 1;
     if (run.status === 'FAIL_WALL') failureReasons.wall += 1;
     if (run.status === 'FAIL_SELF') failureReasons.self += 1;
-    scoreSum += run.score;
-    durationSum += Math.max(0, run.endTime! - run.startTime);
+    if (run.status !== 'QUIT') scoreSum += run.score;
   }
+  const scoredRuns = finishedRuns.filter((run) => run.status !== 'QUIT');
+
+  const sessionDurationSum = finishedSessions.reduce(
+    (sum, session) => sum + Math.max(0, session.endTime! - session.startTime),
+    0
+  );
 
   const byLevel: StatsLevel[] = [...levels.entries()]
     .sort(([a], [b]) => a - b)
@@ -77,7 +99,8 @@ export const computeStats = (
       fail: value.fail,
       quit: value.quit,
       completionRate: average(value.complete, value.finished),
-      avgScore: average(value.scoreSum, value.finished)
+      avgRunDurationMs: average(value.durationSum, value.finished),
+      avgScore: average(value.scoreSum, value.scoreCount)
     }));
 
   const byDay: StatsDay[] = [];
@@ -91,10 +114,11 @@ export const computeStats = (
     totals: {
       sessions: sessions.length,
       runs: runs.length,
+      avgRunsPerSession: average(runsInSelectedSessions.length, sessions.length),
       finishedRuns: finishedRuns.length,
       completionRate: average(completed, finishedRuns.length),
-      avgDurationMs: average(durationSum, finishedRuns.length),
-      avgScore: average(scoreSum, finishedRuns.length)
+      avgSessionDurationMs: average(sessionDurationSum, finishedSessions.length),
+      avgScore: average(scoreSum, scoredRuns.length)
     },
     byDay,
     byLevel,

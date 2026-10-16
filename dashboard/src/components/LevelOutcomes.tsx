@@ -14,7 +14,7 @@ export const LevelOutcomes = ({ stats }: { stats: StatsResponse }) => {
   return (
     <ChartCard
       title="How runs end, by level"
-      question="Where do players get stuck or give up? Bars show each level's share of cleared, failed and quit runs."
+      question="Where do players get stuck or give up?"
       table={{
         columns: ['Level', 'Started', 'Cleared', 'Failed', 'Quit', 'Clear rate'],
         rows: stats.byLevel.map((level) => [
@@ -31,7 +31,7 @@ export const LevelOutcomes = ({ stats }: { stats: StatsResponse }) => {
         <p className="muted">No runs have ended in this period.</p>
       ) : (
         <div className="chart" role="img" aria-label="Stacked bar chart of run outcomes per level">
-          <ResponsiveContainer width="100%" height={280}>
+          <ResponsiveContainer width="100%" height={180}>
             <BarChart data={data} stackOffset="expand" margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
               <CartesianGrid vertical={false} {...GRID} />
               <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={false} />

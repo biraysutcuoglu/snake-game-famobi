@@ -21,6 +21,7 @@ export const isStatsResponse = (value: unknown): value is StatsResponse => {
     isObject(totals) &&
     typeof totals.sessions === 'number' &&
     typeof totals.runs === 'number' &&
+    (totals.avgRunsPerSession === null || typeof totals.avgRunsPerSession === 'number') &&
     Array.isArray(byDay) &&
     Array.isArray(byLevel) &&
     isObject(failureReasons) &&

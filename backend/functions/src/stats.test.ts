@@ -7,10 +7,10 @@ const DAY = 24 * 60 * 60 * 1000;
 const TO = Date.UTC(2025, 9, 14, 12);
 const RANGE = { from: TO - 2 * DAY, to: TO };
 
-const session = (sessionId: string, startTime = TO - 1000): SessionDocument => ({
+const session = (sessionId: string, startTime = TO - 1000, endTime: number | null = null): SessionDocument => ({
   sessionId,
   startTime,
-  endTime: null,
+  endTime,
   runsPlayed: 0
 });
 
@@ -36,18 +36,19 @@ describe('computeStats', () => {
     expect(stats.totals).toEqual({
       sessions: 0,
       runs: 0,
+      avgRunsPerSession: null,
       finishedRuns: 0,
       completionRate: null,
-      avgDurationMs: null,
+      avgSessionDurationMs: null,
       avgScore: null
     });
     expect(stats.byLevel).toEqual([]);
     expect(stats.byDay.map((day) => day.runs)).toEqual([0, 0, 0]);
   });
 
-  it('computes totals, duration, outcomes and failure reasons', () => {
+  it('computes totals, session duration, outcomes and failure reasons', () => {
     const stats = computeStats(
-      [session('s1'), session('s2')],
+      [session('s1', TO - 61_000, TO - 1000), session('s2', TO - 31_000, TO - 1000)],
       [
         run('r1', 1, 'SUCCESS', { score: 200, startTime: TO - 21_000 }),
         run('r2', 1, 'FAIL_WALL', { sessionId: 's2', score: 100, startTime: TO - 41_000 }),
@@ -61,12 +62,36 @@ describe('computeStats', () => {
     expect(stats.totals).toMatchObject({
       sessions: 2,
       runs: 5,
+      avgRunsPerSession: 2.5,
       finishedRuns: 4,
-      avgScore: 100,
-      avgDurationMs: 30_000
+      avgScore: 400 / 3,
+      avgSessionDurationMs: 45_000
     });
     expect(stats.totals.completionRate).toBe(0.25);
     expect(stats.failureReasons).toEqual({ wall: 1, self: 1 });
+    expect(stats.byLevel.find((level) => level.level === 2)?.avgScore).toBe(100);
+  });
+
+  it('does not include quit runs in average scores', () => {
+    const stats = computeStats([], [run('quit', 1, 'QUIT', { score: 500 })], RANGE);
+
+    expect(stats.totals.avgScore).toBeNull();
+    expect(stats.byLevel[0]?.avgScore).toBeNull();
+  });
+
+  it('calculates runs per session from runs belonging to the selected session cohort', () => {
+    const stats = computeStats(
+      [session('old', RANGE.from - 1), session('selected', RANGE.from)],
+      [
+        run('old-run', 1, 'SUCCESS', { sessionId: 'old', startTime: RANGE.from + 1000 }),
+        run('selected-1', 1, 'SUCCESS', { sessionId: 'selected', startTime: RANGE.from + 2000 }),
+        run('selected-2', 1, 'IN_PROGRESS', { sessionId: 'selected', startTime: RANGE.from + 3000 })
+      ],
+      RANGE
+    );
+
+    expect(stats.totals.runs).toBe(3);
+    expect(stats.totals.avgRunsPerSession).toBe(2);
   });
 
   it('breaks outcomes down per level and excludes in-progress runs from rates', () => {
@@ -83,6 +108,7 @@ describe('computeStats', () => {
       fail: 0,
       quit: 0,
       completionRate: 1,
+      avgRunDurationMs: 30_000,
       avgScore: 300
     });
   });

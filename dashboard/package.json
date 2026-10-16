@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "Analytics dashboard for Neon Snake. Reads aggregated stats from the getStats function.",
   "type": "module",
+  "packageManager": "pnpm@11.1.3",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

@@ -43,9 +43,9 @@ body {
 }
 
 .page {
-  max-width: 960px;
+  max-width: 1360px;
   margin: 0 auto;
-  padding: 24px 16px 48px;
+  padding: 12px;
 }
 
 .page-header {
@@ -53,8 +53,8 @@ body {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 24px;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
 h1 {
@@ -95,33 +95,56 @@ button:focus-visible {
   color: var(--muted);
 }
 
-.summary {
-  font-size: 1.125rem;
-  margin: 0 0 16px;
+.overview-groups {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 8px;
 }
 
-.tiles {
+.metric-group {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.metric-group h2 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.metric-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
-  margin: 0 0 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
 }
 
 .tile {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 16px;
-  background: var(--surface);
+  border: 0;
+  border-radius: 0;
+  min-width: 0;
+  padding: 4px 8px;
+  background: transparent;
+}
+
+.tile + .tile {
+  border-left: 1px solid var(--border);
 }
 
 .tile dt {
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
 }
 
 .tile dd {
   margin: 0;
-  font-size: 2rem;
+  font-size: 1.5rem;
   font-weight: 600;
   line-height: 1.2;
 }
@@ -129,44 +152,68 @@ button:focus-visible {
 .tile p {
   margin: 0;
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
 }
 
-.grid {
+.dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  grid-template-areas:
+    'activity levels'
+    'failures durations';
+  gap: 8px;
 }
 
-.card {
+.dashboard-slot {
   min-width: 0;
+}
+
+.dashboard-slot--activity {
+  grid-area: activity;
+}
+
+.dashboard-slot--levels {
+  grid-area: levels;
+}
+
+.dashboard-slot--failures {
+  grid-area: failures;
+}
+
+.dashboard-slot--durations {
+  grid-area: durations;
+}
+
+.dashboard-slot > .card {
+  height: 100%;
 }
 
 .card {
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 16px;
+  padding: 10px 12px;
   background: var(--surface);
 }
 
 .card h2 {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: 1rem;
 }
 
 .muted {
   color: var(--muted);
-  margin: 4px 0 12px;
+  margin: 1px 0 4px;
+  font-size: 0.8125rem;
 }
 
 details {
-  margin-top: 8px;
+  margin-top: 2px;
 }
 
 summary {
   cursor: pointer;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
 }
 
 table {
@@ -182,4 +229,41 @@ td {
   padding: 4px 8px;
   border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .overview-groups {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'activity'
+      'levels'
+      'failures'
+      'durations';
+  }
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding: 12px;
+  }
+
+  .page-header {
+    align-items: flex-start;
+  }
+
+  .range {
+    width: 100%;
+  }
+
+  .range button {
+    flex: 1;
+  }
+
+  .tile dd {
+    font-size: 1.5rem;
+  }
 }

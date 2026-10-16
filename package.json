@@ -15,10 +15,10 @@
     "backend:test": "pnpm --dir backend/functions test",
     "backend:test:integration": "pnpm --dir backend/functions test:integration",
     "emulators": "pnpm --dir backend/functions emulators",
-    "dashboard:install": "npm --prefix dashboard install",
-    "dashboard:dev": "npm --prefix dashboard run dev",
-    "dashboard:build": "npm --prefix dashboard run build",
-    "dashboard:test": "npm --prefix dashboard test"
+    "dashboard:install": "pnpm --dir dashboard install",
+    "dashboard:dev": "pnpm --dir dashboard dev",
+    "dashboard:build": "pnpm --dir dashboard build",
+    "dashboard:test": "pnpm --dir dashboard test"
   },
   "dependencies": {
     "phaser": "3.90.0"

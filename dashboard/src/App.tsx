@@ -4,6 +4,7 @@ import { RANGE_OPTIONS, type RangeDays, type StatsResponse } from './api/stats';
 import { FailureReasons } from './components/FailureReasons';
 import { LevelOutcomes } from './components/LevelOutcomes';
 import { Overview } from './components/Overview';
+import { RunDurationByLevel } from './components/RunDurationByLevel';
 import { RunsOverTime } from './components/RunsOverTime';
 import { useStats } from './useStats';
 
@@ -45,14 +46,23 @@ export const App = () => {
         <>
           {state.stats.truncated && (
             <p className="notice" role="note">
-              This period has more sessions or runs than can be read at once, so the numbers cover only the most recent ones.
+              This range contains more data than the read limit. The results only cover the most recent records.
             </p>
           )}
           <Overview stats={state.stats} />
-          <div className="grid">
-            <LevelOutcomes stats={state.stats} />
-            <RunsOverTime stats={state.stats} />
-            <FailureReasons stats={state.stats} />
+          <div className="dashboard-grid">
+            <div className="dashboard-slot dashboard-slot--activity">
+              <RunsOverTime stats={state.stats} />
+            </div>
+            <div className="dashboard-slot dashboard-slot--levels">
+              <LevelOutcomes stats={state.stats} />
+            </div>
+            <div className="dashboard-slot dashboard-slot--failures">
+              <FailureReasons stats={state.stats} />
+            </div>
+            <div className="dashboard-slot dashboard-slot--durations">
+              <RunDurationByLevel stats={state.stats} />
+            </div>
           </div>
         </>
       )}
