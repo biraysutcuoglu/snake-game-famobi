@@ -5,6 +5,7 @@ A browser snake game. It uses Phaser 3, TypeScript, and Vite. It also uses the F
 ## Contents
 
 - [Install and run](#install-and-run)
+- [Testing the complete flow](#testing-the-complete-flow)
 - [Architecture](#architecture)
   - [Analytics backend](#analytics-backend)
     - [Sessions and runs](#sessions-and-runs)
@@ -19,10 +20,12 @@ A browser snake game. It uses Phaser 3, TypeScript, and Vite. It also uses the F
 - [Assumptions and limitations](#assumptions-and-limitations)
   - [Assumptions](#assumptions)
   - [Limitations](#limitations)
+- [What I would improve with more time](#what-i-would-improve-with-more-time)
+- [Tool use disclosure](#tool-use-disclosure)
 
 ## Install and run
 
-You need Node.js 22 or newer. You also need pnpm.
+You need Node.js 22 or newer and pnpm. The Firebase emulators also require Java JDK 11 or newer.
 
 ```bash
 pnpm install
@@ -68,6 +71,21 @@ pnpm dashboard:build
 ```
 
 Run `pnpm preview` to preview an existing production build.
+
+`pnpm backend:test:integration` starts and stops its own Firebase emulators. Stop any emulators started with `pnpm emulators` before running it to avoid port conflicts.
+
+## Testing the complete flow
+
+Start the local game, Firebase emulators, and dashboard as described above. Then:
+
+1. Play several runs. Include a success, a failure, a quit, and different levels.
+2. Close the game page to trigger the current run and session end events. Confirm that they reach Firestore.
+3. Check the Firestore emulator. Confirm that the session and run documents contain the expected IDs, statuses, scores, levels, and timestamps.
+4. Check the dashboard. Confirm that its totals, rates, failure reasons, and level results match the stored documents.
+
+Also complete the checks in [Famobi SDK integration](#famobi-sdk-integration).
+
+The backend integration test automates the HTTP and Firestore part of this flow. A future browser test could automate the game actions and dashboard checks too.
 
 ## Architecture
 
@@ -276,12 +294,15 @@ The `getStats` Firebase function calls [`handleGetStats()`](backend/functions/sr
 [`computeStats()`](backend/functions/src/stats.ts) builds the response. It calculates:
 
 - Total sessions and runs.
-- Finished runs.
-- Completion rate.
-- Average score and duration.
+- Finished runs and run success rate.
+- Average runs per session for sessions that started in the selected range.
+- Average session duration for finished sessions.
+- Average score for successful and failed runs. Quit runs are excluded.
 - Sessions and runs by day.
-- Results by level.
+- Outcomes and average run duration by level. Run duration includes successful, failed, and quit runs.
 - Wall and self-collision failures.
+
+The dashboard calculates run finish rate by dividing finished runs by started runs.
 
 ## Famobi SDK integration
 
@@ -318,7 +339,7 @@ The loading overlay and retry button belong to the game. The game reports loadin
 - The browser creates the IDs and timestamps. All reporting days use UTC.
 - Date ranges use `startTime`. An `IN_PROGRESS` run counts as a start, but not as a finished run.
 - Obstacles count as wall failures. External endings count as quits.
-- Analytics is anonymous. There is no player or account ID.
+- Analytics does not contain a player or account ID. It uses random session and run IDs.
 
 ### Limitations
 
@@ -326,10 +347,26 @@ The loading overlay and retry button belong to the game. The game reports loadin
 - Analytics errors are only logged. They never stop the game, but failed events may be lost.
 - Only one active run is stored in memory. A second start event would replace it.
 - Final data cannot be corrected. A different result for the same finished run returns a conflict.
-- The write endpoint is public and has no authentication. Valid-looking fake events are possible.
+- Both backend endpoints are public and have no authentication. Valid-looking fake events are possible, and the stats endpoint can be called freely and generate Firestore reads.
 - Browser clocks may be wrong. This can place data in the wrong reporting day.
 - Stats aggregate at most 20,000 sessions and 20,000 runs. Each query reads one extra document to detect truncation. This is an estimated safety cap for response time, memory use, and Firestore cost. Over 90 days, it allows about `20,000 / 90 = 222` runs per day before run results are truncated. The value is not based on production traffic or benchmarks. There is no pagination or pre-aggregation.
 - Session and run queries are separate. A write between them can create a short-lived mismatch.
 - The dashboard polls every 30 seconds. Backend responses may be cached for 60 seconds.
 - Failure categories are limited. Walls and obstacles share one status. Quits and external endings share one status.
+- Analytics starts immediately when `VITE_ANALYTICS_URL` is configured. There is no consent gate or privacy notice yet.
 - A missing `VITE_ANALYTICS_URL` in production disables collection through `NoopAnalyticsClient`.
+
+## What I would improve with more time
+
+- Protect analytics endpoints with Firebase App Check, authentication, and rate limiting. This would reduce fake or abusive requests.
+- Add consent management and a privacy notice. Non-essential analytics would remain disabled until the player opts in.
+- Add a scheduled cleanup function for stale sessions and runs. Records that remain in progress for too long could be marked as timed out instead of staying open forever.
+- Add retry and offline storage in the game. Failed analytics requests could be saved locally and sent later.
+- Add monitoring and alerts. This could detect failed requests, unusual traffic, missing end events, and high error rates.
+- Add a data-retention policy. Old raw analytics documents could be archived or deleted automatically.
+- Add more dashboard filters. Statistics could be filtered by level, outcome, date, or failure reason.
+- Improve accessibility and test the dashboard on more screen sizes and browsers.
+
+## Tool use disclosure
+
+AI-assisted development tools were used to help review the architecture, implement parts of the analytics dashboard, write tests, debug issues, and improve the documentation. All resulting changes were reviewed and tested before inclusion.
