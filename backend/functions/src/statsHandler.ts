@@ -1,19 +1,19 @@
-import type { AnalyticsEvent } from './shared/analyticsEvent';
+import type { RunDocument, SessionDocument } from './shared/analyticsDocument';
 import { computeStats } from './stats';
 
 export const DEFAULT_DAYS = 7;
 export const MAX_DAYS = 90;
-/** Upper bound on documents read per request; keeps cost and latency bounded. */
-export const MAX_EVENTS_READ = 20_000;
+/** Maximum documents read from each collection per request. */
+export const MAX_DOCUMENTS_PER_COLLECTION = 20_000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export type EventSource = {
-  /**
-   * Events with from <= timestamp <= to, newest first, at most `limit`.
-   * `truncated` is true when more matched than `limit`.
-   */
-  load(from: number, to: number, limit: number): Promise<{ events: AnalyticsEvent[]; truncated: boolean }>;
+export type StatsSource = {
+  load(
+    from: number,
+    to: number,
+    limit: number
+  ): Promise<{ sessions: SessionDocument[]; runs: RunDocument[]; truncated: boolean }>;
 };
 
 export type StatsRequest = { method: string; query: Record<string, unknown> };
@@ -26,18 +26,12 @@ const parseDays = (raw: unknown): number | null => {
   return days >= 1 && days <= MAX_DAYS ? days : null;
 };
 
-/**
- * The range covers `days` whole UTC days ending with today, so the daily
- * buckets are exact and today's partial day is shown as such.
- */
 export const handleGetStats = async (
   request: StatsRequest,
-  source: EventSource,
+  source: StatsSource,
   now: number = Date.now()
 ): Promise<StatsHttpResponse> => {
-  if (request.method !== 'GET') {
-    return { status: 405, body: { error: 'Use GET' } };
-  }
+  if (request.method !== 'GET') return { status: 405, body: { error: 'Use GET' } };
 
   const days = parseDays(request.query.days);
   if (days === null) {
@@ -46,7 +40,10 @@ export const handleGetStats = async (
 
   const startOfToday = Math.floor(now / DAY_MS) * DAY_MS;
   const range = { from: startOfToday - (days - 1) * DAY_MS, to: now };
-
-  const { events, truncated } = await source.load(range.from, range.to, MAX_EVENTS_READ);
-  return { status: 200, body: computeStats(events, range, truncated) };
+  const { sessions, runs, truncated } = await source.load(
+    range.from,
+    range.to,
+    MAX_DOCUMENTS_PER_COLLECTION
+  );
+  return { status: 200, body: computeStats(sessions, runs, range, truncated) };
 };

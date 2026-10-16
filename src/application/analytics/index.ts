@@ -1,4 +1,4 @@
 export { AnalyticsCollector } from './AnalyticsCollector';
-export { ConsoleSink, NoopSink } from './AnalyticsSink';
-export type { AnalyticsSink } from './AnalyticsSink';
-export { HttpBatchSink } from './HttpBatchSink';
+export { ConsoleAnalyticsClient, HttpAnalyticsClient, NoopAnalyticsClient } from './AnalyticsClient';
+export type { AnalyticsClient, HttpAnalyticsClientOptions } from './AnalyticsClient';
+export type { RunDocument, RunStatus, SessionDocument } from '../../shared/analyticsDocument';

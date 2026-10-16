@@ -1,32 +1,61 @@
 import { describe, expect, it } from 'vitest';
 
 import { EventBus } from '../../core/events/EventBus';
-import type { AnalyticsEvent } from '../../shared/analyticsEvent';
+import type { RunDocument, SessionDocument } from '../../shared/analyticsDocument';
 import type { GameController } from '../GameController';
 import type { GameEventMap } from '../gameEvents';
 import { AnalyticsCollector } from './AnalyticsCollector';
-import type { AnalyticsSink } from './AnalyticsSink';
+import type { AnalyticsClient } from './AnalyticsClient';
 
 const setup = () => {
-  const events: AnalyticsEvent[] = [];
-  const sink: AnalyticsSink = { track: (event) => events.push(event), flush: () => {} };
+  const sessions: SessionDocument[] = [];
+  const runs: RunDocument[] = [];
+  const client: AnalyticsClient = {
+    trackSession: (session) => sessions.push(session),
+    trackRun: (run) => runs.push(run)
+  };
   const bus = new EventBus<GameEventMap>();
   const controller = { events: bus } as unknown as GameController;
   let id = 0;
   let clock = 1000;
-  const collector = new AnalyticsCollector(sink, {
+  const collector = new AnalyticsCollector(client, {
     createId: () => `id-${id++}`,
     now: () => clock
   });
   const disconnect = collector.connect(controller);
-  return { events, bus, collector, disconnect, setClock: (value: number) => (clock = value) };
+  return {
+    sessions,
+    runs,
+    bus,
+    collector,
+    disconnect,
+    setClock: (value: number) => (clock = value)
+  };
+};
+
+const ready = (bus: EventBus<GameEventMap>, occurredAt = 100): void => {
+  bus.emit('ready', { occurredAt });
+};
+
+const startRun = (bus: EventBus<GameEventMap>, occurredAt = 200): void => {
+  bus.emit('runStarted', { level: 2, runNumber: 3, score: 0, progress: 0, occurredAt });
 };
 
 describe('AnalyticsCollector', () => {
-  it('records a completed run with level, outcome, score and timing', () => {
-    const { events, bus } = setup();
+  it('creates a session document when the game becomes ready', () => {
+    const { sessions, bus } = setup();
 
-    bus.emit('runStarted', { level: 2, runNumber: 3, score: 0, progress: 0, occurredAt: 100 });
+    ready(bus);
+
+    expect(sessions).toEqual([
+      { sessionId: 'id-0', startTime: 100, endTime: null, runsPlayed: 0 }
+    ]);
+  });
+
+  it('creates and finalizes a successful run with an independent UUID', () => {
+    const { sessions, runs, bus } = setup();
+    ready(bus);
+    startRun(bus);
     bus.emit('scoreChanged', { level: 2, score: 10, delta: 10 });
     bus.emit('runEnded', {
       level: 2,
@@ -35,87 +64,101 @@ describe('AnalyticsCollector', () => {
       reason: 'complete',
       failureReason: null,
       durationMs: 5000,
-      occurredAt: 5100
+      occurredAt: 5200
     });
 
-    expect(events.map((event) => event.name)).toEqual(['run_start', 'score_update', 'run_end']);
-    expect(events[0]).toMatchObject({ runId: 'id-0-3', level: 2, timestamp: 100 });
-    expect(events[2]).toMatchObject({
-      runId: 'id-0-3',
-      level: 2,
-      outcome: 'complete',
-      score: 30,
-      progress: 1,
-      durationMs: 5000,
-      timestamp: 5100
-    });
-    expect(new Set(events.map((event) => event.eventId)).size).toBe(3);
+    expect(runs).toEqual([
+      {
+        sessionId: 'id-0',
+        runId: 'id-1',
+        level: 2,
+        startTime: 200,
+        endTime: null,
+        score: 0,
+        status: 'IN_PROGRESS'
+      },
+      {
+        sessionId: 'id-0',
+        runId: 'id-1',
+        level: 2,
+        startTime: 200,
+        endTime: 5200,
+        score: 30,
+        status: 'SUCCESS'
+      }
+    ]);
+
+    expect(sessions.at(-1)?.runsPlayed).toBe(1);
   });
 
-  it('records the failure reason for failed runs', () => {
-    const { events, bus } = setup();
-    bus.emit('runStarted', { level: 1, runNumber: 1, score: 0, progress: 0, occurredAt: 1 });
+  it.each([
+    ['wall', 'FAIL_WALL'],
+    ['obstacle', 'FAIL_WALL'],
+    ['snake', 'FAIL_SELF'],
+    ['external', 'QUIT']
+  ] as const)('maps %s failures to %s', (failureReason, expectedStatus) => {
+    const { runs, bus } = setup();
+    ready(bus);
+    startRun(bus);
     bus.emit('runEnded', {
-      level: 1,
+      level: 2,
       score: 5,
       progress: 0.4,
       reason: 'fail',
-      failureReason: 'wall',
+      failureReason,
       durationMs: 10,
-      occurredAt: 11
+      occurredAt: 210
     });
-    expect(events.at(-1)).toMatchObject({ outcome: 'fail', failureReason: 'wall' });
+
+    expect(runs.at(-1)?.status).toBe(expectedStatus);
   });
 
-  it('ignores the score reset at the start of a run', () => {
-    const { events, bus } = setup();
-    bus.emit('runStarted', { level: 1, runNumber: 1, score: 0, progress: 0, occurredAt: 1 });
-    bus.emit('scoreChanged', { level: 1, score: 0, delta: -20 });
-    expect(events.map((event) => event.name)).toEqual(['run_start']);
-  });
-
-  it('records pause and resume once per transition', () => {
-    const { events, bus } = setup();
-    bus.emit('runStarted', { level: 1, runNumber: 1, score: 0, progress: 0, occurredAt: 1 });
-    bus.emit('pauseChanged', { paused: true, source: 'player' });
-    bus.emit('pauseChanged', { paused: true, source: 'system' });
-    bus.emit('pauseChanged', { paused: false, source: null });
-    expect(events.map((event) => event.name)).toEqual(['run_start', 'run_pause', 'run_resume']);
-    expect(events[1]).toMatchObject({ pauseSource: 'player' });
-  });
-
-  it('records a quit run_end with last known score when the page goes away mid-run', () => {
-    const { events, bus, collector, setClock } = setup();
-    bus.emit('runStarted', { level: 3, runNumber: 1, score: 0, progress: 0, occurredAt: 1000 });
-    bus.emit('scoreChanged', { level: 3, score: 20, delta: 10 });
-    bus.emit('progressChanged', { level: 3, progress: 0.5, collected: 5, target: 10 });
+  it('finalizes an active run and its session when the page goes away', () => {
+    const { sessions, runs, bus, collector, setClock } = setup();
+    ready(bus, 1000);
+    startRun(bus, 1100);
+    bus.emit('scoreChanged', { level: 2, score: 20, delta: 20 });
     setClock(4000);
 
-    collector.abandonActiveRun();
-    collector.abandonActiveRun();
+    collector.endSession();
+    collector.endSession();
 
-    const ends = events.filter((event) => event.name === 'run_end');
-    expect(ends).toHaveLength(1);
-    expect(ends[0]).toMatchObject({
-      outcome: 'quit',
-      level: 3,
+    expect(runs.at(-1)).toEqual({
+      sessionId: 'id-0',
+      runId: 'id-1',
+      level: 2,
+      startTime: 1100,
+      endTime: 4000,
       score: 20,
-      progress: 0.5,
-      durationMs: 3000,
-      timestamp: 4000
+      status: 'QUIT'
     });
+    expect(sessions.at(-1)).toEqual({
+      sessionId: 'id-0',
+      startTime: 1000,
+      endTime: 4000,
+      runsPlayed: 1
+    });
+    expect(sessions).toHaveLength(3);
+    expect(runs).toHaveLength(2);
   });
 
-  it('does nothing on page hide when no run is active', () => {
-    const { events, collector } = setup();
-    collector.abandonActiveRun();
-    expect(events).toEqual([]);
+  it('ends a session with no runs played', () => {
+    const { sessions, bus, collector, setClock } = setup();
+    ready(bus, 1000);
+    setClock(1500);
+
+    collector.endSession();
+
+    expect(sessions.at(-1)).toMatchObject({ endTime: 1500, runsPlayed: 0 });
   });
 
-  it('stops recording after disconnect', () => {
-    const { events, bus, disconnect } = setup();
+  it('stops observing after disconnect', () => {
+    const { sessions, runs, bus, disconnect } = setup();
     disconnect();
-    bus.emit('runStarted', { level: 1, runNumber: 1, score: 0, progress: 0, occurredAt: 1 });
-    expect(events).toEqual([]);
+    ready(bus);
+    startRun(bus);
+
+    expect(sessions).toEqual([]);
+    expect(runs).toEqual([]);
   });
 });

@@ -2,7 +2,7 @@ import type { StatsResponse } from '../../../src/shared/analyticsStats';
 
 export type { FailureReasonKey, StatsLevel, StatsResponse } from '../../../src/shared/analyticsStats';
 
-export const RANGE_OPTIONS = [7, 30] as const;
+export const RANGE_OPTIONS = [7, 30, 90] as const;
 export type RangeDays = (typeof RANGE_OPTIONS)[number];
 
 const isObject = (value: unknown): value is Record<string, unknown> =>

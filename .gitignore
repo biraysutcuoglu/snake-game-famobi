@@ -6,7 +6,7 @@ dist/
 *.log
 .env
 
-# Firebase emulator backend
+# Firebase backend build and emulator output
 backend/functions/lib/
 backend/functions/src/shared/
 backend/.firebase/

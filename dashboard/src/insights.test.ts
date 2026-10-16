@@ -29,7 +29,7 @@ const stats = (byLevel: StatsLevel[], totals: Partial<StatsResponse['totals']> =
   },
   byDay: [],
   byLevel,
-  failureReasons: { wall: 0, snake: 0, obstacle: 0, external: 0 },
+  failureReasons: { wall: 0, self: 0 },
   truncated: false
 });
 

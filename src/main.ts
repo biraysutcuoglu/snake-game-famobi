@@ -1,10 +1,13 @@
 import Phaser from 'phaser';
 
-import { AnalyticsCollector, ConsoleSink, HttpBatchSink, NoopSink } from './application/analytics';
-import type { AnalyticsSink } from './application/analytics';
+import {
+  AnalyticsCollector,
+  ConsoleAnalyticsClient,
+  HttpAnalyticsClient,
+  NoopAnalyticsClient
+} from './application/analytics';
 import { GameController } from './application/GameController';
 import { FamobiPlatformAdapter } from './application/platform/FamobiPlatformAdapter';
-import { LocalEventQueueStorage } from './core/storage/EventQueueStorage';
 import { LocalGameStorage } from './core/storage/GameStorage';
 import { SnakeScene } from './game/scenes/SnakeScene';
 import { SnakeGame } from './game/snakeGame';
@@ -99,17 +102,13 @@ export const start = (): void => {
   const controller = new GameController(simulation, new LocalGameStorage());
   const platform = new FamobiPlatformAdapter();
   const disconnectPlatform = platform.connect(controller);
-  const analyticsEndpoint = import.meta.env.VITE_ANALYTICS_URL as string | undefined;
-  const analyticsSink: AnalyticsSink = analyticsEndpoint
-    ? new HttpBatchSink({
-        endpoint: analyticsEndpoint,
-        storage: new LocalEventQueueStorage(),
-        maxBatchSize: Number(import.meta.env.VITE_ANALYTICS_BATCH_SIZE) || undefined
-      })
+  const analyticsUrl = import.meta.env.VITE_ANALYTICS_URL;
+  const analyticsClient = analyticsUrl
+    ? new HttpAnalyticsClient({ endpoint: analyticsUrl })
     : import.meta.env.DEV
-      ? new ConsoleSink()
-      : new NoopSink();
-  const analytics = new AnalyticsCollector(analyticsSink);
+      ? new ConsoleAnalyticsClient()
+      : new NoopAnalyticsClient();
+  const analytics = new AnalyticsCollector(analyticsClient);
   const disconnectAnalytics = analytics.connect(controller);
   const snakeScene = new SnakeScene(controller);
   let currentSnapshot = controller.getSnapshot();
@@ -224,9 +223,9 @@ export const start = (): void => {
     button.addEventListener('click', () => controller.startAtLevel(Number(button.dataset.level)));
   });
 
-  window.addEventListener('pagehide', () => {
-    analytics.abandonActiveRun();
-    analyticsSink.flush();
+  window.addEventListener('pagehide', (event) => {
+    // A page kept alive in the back/forward cache is still the same session.
+    if (!event.persisted) analytics.endSession();
   });
 
   window.addEventListener('beforeunload', () => {

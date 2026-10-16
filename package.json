@@ -4,21 +4,21 @@
   "description": "A small browser game starter for the Famobi development challenge.",
   "type": "module",
   "scripts": {
-    "dev": "pnpm run dev:emulator",
-    "dev:emulator": "pnpm run build:emulator && vite preview",
-    "build:emulator": "tsc --noEmit && vite build --mode development && vite build --mode development --config vite.game.config.ts && node scripts/inject-game-size.mjs",
+    "dev": "pnpm run build:dev && vite preview",
+    "build:dev": "tsc --noEmit && vite build --mode development && vite build --mode development --config vite.game.config.ts && node scripts/inject-game-size.mjs",
     "build": "tsc --noEmit && vite build && vite build --config vite.game.config.ts && node scripts/inject-game-size.mjs",
     "preview": "vite preview",
     "check": "tsc --noEmit",
     "test": "vitest run",
+    "backend:install": "pnpm --dir backend/functions install",
+    "backend:build": "pnpm --dir backend/functions build",
+    "backend:test": "pnpm --dir backend/functions test",
+    "backend:test:integration": "pnpm --dir backend/functions test:integration",
+    "emulators": "pnpm --dir backend/functions emulators",
     "dashboard:install": "npm --prefix dashboard install",
     "dashboard:dev": "npm --prefix dashboard run dev",
     "dashboard:build": "npm --prefix dashboard run build",
-    "dashboard:test": "npm --prefix dashboard test",
-    "backend:install": "pnpm --dir backend/functions install",
-    "emulators": "pnpm --dir backend/functions run emulators",
-    "backend:test": "pnpm --dir backend/functions test",
-    "backend:test:integration": "pnpm --dir backend/functions run test:integration"
+    "dashboard:test": "npm --prefix dashboard test"
   },
   "dependencies": {
     "phaser": "3.90.0"

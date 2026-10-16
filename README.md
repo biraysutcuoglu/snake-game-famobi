@@ -1,196 +1,335 @@
-# Neon Snake + Analytics
+# Neon Snake
 
-A browser snake game (Phaser 3, TypeScript, Vite) with an analytics pipeline:
+A browser snake game. It uses Phaser 3, TypeScript, and Vite. It also uses the Famobi SDK.
 
-```text
-Game  →  collectEvents (Node.js Cloud Function (Firebase's name for a server-side function))  →  Firestore  →  getStats  →  React dashboard
-```
+## Contents
 
-- `src/` – the game. It records gameplay events (`session_start`, `run_start`, `run_end`, `run_pause`, `run_resume`, `score_update`).
-- `backend/` – Firebase project: two Node.js functions (`collectEvents`, `getStats`), Firestore rules.
-- `dashboard/` – React analytics dashboard (level outcomes, daily activity, failure reasons).
-- `src/shared/` – the event and stats types used by all three parts.
+- [Install and run](#install-and-run)
+- [Architecture](#architecture)
+  - [Analytics backend](#analytics-backend)
+    - [Sessions and runs](#sessions-and-runs)
+  - [Analytics write flow](#analytics-write-flow)
+    - [Game events](#game-events)
+    - [Collecting data](#collecting-data)
+    - [Sending data](#sending-data)
+    - [Handling writes](#handling-writes)
+  - [Analytics read flow](#analytics-read-flow)
+- [Famobi SDK integration](#famobi-sdk-integration)
+- [Project structure](#project-structure)
+- [Assumptions and limitations](#assumptions-and-limitations)
+  - [Assumptions](#assumptions)
+  - [Limitations](#limitations)
 
 ## Install and run
 
-**Requirements:** Node.js 22+, pnpm, and Java 11+ (the Firestore emulator runs on the JVM).
-No Firebase account or real project is needed. Everything runs on the local emulators.
+You need Node.js 22 or newer. You also need pnpm.
 
 ```bash
 pnpm install
-pnpm backend:install     # backend + firebase-tools
+pnpm backend:install
 pnpm dashboard:install
 ```
 
-Then start three processes in separate terminals:
+Start the game:
 
 ```bash
-pnpm emulators           # Functions + Firestore + Emulator UI
-pnpm dev                 # the game
-pnpm dashboard:dev       # the dashboard
+pnpm dev
 ```
 
-Open the local URLs that Vite prints. The env files `.env.development` and `dashboard/.env.development` already point both apps at the emulator.
+`pnpm dev` checks the types. It builds the page and the standalone `game.js` file. It adds the bundle size to `boot.js`. It then starts Vite preview.
 
-The game development command builds and serves the complete game bundle before opening it:
-
-- `pnpm dev` delegates to `pnpm dev:emulator`.
-- `pnpm dev:emulator` runs `build:emulator`, then serves `dist/` with `vite preview`.
-- `pnpm build:emulator` type-checks the project, builds the page and the separate `game.js` bundle with development environment variables, and injects the bundle size into `boot.js`.
-
-The separate `game.js` build is required because [`public/boot.js`](public/boot.js) hands that bundle to `GameInterface.init()`. Running Vite's development server alone would serve `boot.js` without generating the standalone game bundle. Use `pnpm build` for a production build; it uses production environment variables and does not embed the local emulator URL.
-
-## Test the complete flow locally
-
-1. Start the emulators, the game and the dashboard as above.
-2. Play a few runs in the game: finish a level, crash into a wall, pause, quit to the menu.
-3. Open the dashboard. Numbers update on their own while the tab is open (it polls every 30 seconds).
-4. Optional: look at the raw data in the Emulator UI at <http://127.0.0.1:4000/firestore>, collection `analytics_events`.
-
-Automated tests:
+Start the backend and dashboard in separate terminals:
 
 ```bash
-pnpm test                       # game: collector and sink
-pnpm backend:test               # backend logic, no emulator needed
-pnpm backend:test:integration   # backend inside the emulators (needs Java)
-pnpm dashboard:test             # dashboard
+pnpm emulators
+pnpm dashboard:dev
 ```
 
-Other checks: `pnpm check` and `pnpm build`.
+The local backend endpoints are:
 
-## Test the Famobi SDK integration
+```text
+http://127.0.0.1:5001/demo-neon-snake/us-central1/collectAnalytics
+http://127.0.0.1:5001/demo-neon-snake/us-central1/getStats
+```
 
-These steps follow the Famobi test catalog ([Start](https://docs.famobi.com/testCatalogStart)). The game loads the Famobi SDK (`init.js`) in `index.html`, and [`public/boot.js`](public/boot.js) then hands the game bundle (`game.js`) to `GameInterface.init()`. The game starts only after `init()` resolves. The backend is not needed for these checks.
+The root `.env.development` sets `VITE_ANALYTICS_URL`. `dashboard/.env.development` sets `VITE_STATS_URL`. Both point to the local backend. Set these variables for deployed builds too.
 
-Run the application with the browser DevTools open.
+Run checks and builds:
 
-| # | Test | Steps | Expected result |
-| --- | --- | --- | --- |
-| 1 | The SDK must be loaded | Open the page, check the **Network** tab and the **Console**. | `init.js` and `game-interface.js` both load, and the SDK logs its startup message. |
-| 2 | The SDK must be initialized | Make sure `GameInterface.init()` is called (it is, in `boot.js`). Check the **Console**. | The console logs that initialization has started. |
-| 3 | The game scripts must be loaded via the SDK | Open the page with `?holdInit=1`. Look for the `init hold` log. In **Network**, check that `game.js` has **not** loaded. Click **START** on the SDK overlay. | `game.js` loads only after clicking START. The game bundle has no `<script>` tag of its own in `index.html`. |
-| 4 | The game must only start after initialization | Open the page with `?holdInit=1`. Look for the `init hold` log and check that the game does not start. Click **START**. | The game starts only after clicking START (the start call sits in the `init()` resolve callback). |
+```bash
+pnpm check
+pnpm test
+pnpm build
+pnpm backend:test
+pnpm backend:build
+pnpm backend:test:integration
+pnpm dashboard:test
+pnpm dashboard:build
+```
 
-The loading overlay with a retry button (shown while `game.js` downloads, and again if the download fails) is part of the game, not the SDK. It reports download progress to the SDK with `GameInterface.sendPreloadProgress`.
+Run `pnpm preview` to preview an existing production build.
 
-## Main technical decisions
+## Architecture
 
-### Components
+The project has three main parts. The game creates analytics events. The Firebase backend validates and stores them. The React dashboard reads summary data.
 
 ```mermaid
 flowchart LR
-  subgraph Game["Game (src/)"]
-    SG["SnakeGame"] --> GC["GameController"]
-    GC -- "typed events" --> EB(("EventBus"))
-    EB --> AC["AnalyticsCollector"]
-    AC --> HBS["HttpBatchSink"]
-    HBS <--> LS[("localStorage queue")]
+  subgraph Game[Browser game]
+    SnakeGame[SnakeGame] -->|state snapshots| GameController[GameController]
+    GameController -->|typed game events| EventBus[EventBus]
+    EventBus --> AnalyticsCollector[AnalyticsCollector]
+    AnalyticsCollector -->|trackSession / trackRun| AnalyticsClient{AnalyticsClient}
+    AnalyticsClient --> HttpClient[HttpAnalyticsClient]
+    AnalyticsClient -.-> ConsoleClient[ConsoleAnalyticsClient]
+    AnalyticsClient -.-> NoopClient[NoopAnalyticsClient]
   end
 
-  subgraph Backend["Backend (backend/functions/src/)"]
-    CE["collectEvents<br/>index.ts"] --> H["handler.ts"]
-    H --> FST["firestoreStore.ts"]
-    GS["getStats<br/>index.ts"] --> SH["statsHandler.ts"]
-    SH --> ST["stats.ts"]
-    SH --> FST
+  subgraph Backend[Firebase Functions]
+    Collect[collectAnalytics] --> CollectHandler[handleCollectAnalytics]
+    CollectHandler --> Validation[validateAnalyticsRequest]
+    Validation -->|validated command| CollectHandler
+    CollectHandler -->|apply| Store[FirestoreAnalyticsStore]
+
+    GetStats[getStats] --> StatsHandler[handleGetStats]
+    StatsHandler -->|load| StatsSource[FirestoreStatsSource]
+    StatsSource -->|session and run documents| StatsHandler
+    StatsHandler --> ComputeStats[computeStats]
+    ComputeStats -->|aggregates| StatsHandler
   end
 
-  DB[("Firestore")]
-  DASH["Dashboard (React)"]
+  subgraph Storage[Data]
+    Firestore[(Firestore<br/>sessions and runs)]
+  end
 
-  HBS -- "POST batch" --> CE
-  FST --> DB
-  DASH -- "GET ?days=" --> GS
+  subgraph Dashboard[React dashboard]
+    App[App] --> UseStats[useStats]
+    UseStats --> FetchStats[fetchStats]
+  end
+
+  HttpClient -->|POST lifecycle command| Collect
+  Store -->|transactional writes| Firestore
+  FetchStats -->|GET summary data| GetStats
+  StatsSource -->|read sessions and runs| Firestore
+  GetStats -->|StatsResponse| FetchStats
 ```
 
-`src/shared/` is imported by the game, the backend and the dashboard.
+### Analytics backend
 
-### Key decisions and why
+The backend uses Firebase Functions and Firestore. It exposes two HTTP functions:
 
-- **Backend is the only door to the data.** The browser never reads Firestore, and the Firestore rules deny all client access. The dashboard calls `getStats`, which reads events with the Firebase Admin SDK and returns only totals.
-- **One shared contract.** The game and the backend use the same event and stats types from [`src/shared/`](src/shared/). 
-- **Checked twice.** The game creates events only through `AnalyticsCollector`, so wrong types fail the TypeScript build. The backend validates every event again.
-- **Game events and analytics are decoupled.** `GameController` emits on an `EventBus`, and `AnalyticsCollector` subscribes to it. A failing sink is caught and logged, so it can never affect gameplay.
-- **Reliable delivery.** Events wait in a `localStorage` queue (max 500) and are removed only after the server accepts them. The queue is sent every 5 s, when 20 (batch size) events are waiting, or right after `run_end`. Network errors, 5xx, 408 and 429 are retried with backoff up to 60 s. Other 4xx responses are dropped because retrying won't help. 
-- Requests use `Content-Type: text/plain;charset=UTF-8`, but the body is still JSON. This is deliberate. A browser sends a cross-origin request with `application/json` only after a CORS preflight (an extra `OPTIONS` request) that the server must answer first. `navigator.sendBeacon` cannot wait for a preflight. It also sends no preflight, so a JSON `Blob` would be refused by the browser when the tab closes. `text/plain` is a CORS-safelisted type, so both `fetch` and `sendBeacon` deliver the batch in one request. The backend parses the body as JSON whichever header arrives ([`handler.ts`](backend/functions/src/handler.ts)).
-- **When a batch is sent.** Four triggers: 20 events are waiting, a `run_end` happens, 5 s pass after the first waiting event, or the page is hidden (see *Tab closing*). Only one request is in flight at a time.
-- **Tab closing.** When the page is hidden ([`src/main.ts`](src/main.ts)), an unfinished run is recorded as `quit` and the queue is sent with `navigator.sendBeacon`, which the browser delivers after the page unloads. If that fails, a `fetch` with `keepalive` is used. Unsent events stay in `localStorage` for the next visit. 
-- **Run grouping.** `AnalyticsCollector` sets each run's `runId` to `<sessionId>-<run number>` when the run starts, and every event in that run uses it. The run number comes from the saved profile's total runs. The session id keeps it unique across page loads.
-- **Idempotent backend.** Each event is saved under its `eventId` with `create()`. A resent event is counted as a duplicate instead of being stored twice. If storage fails, the function returns 500 so the game retries.
-- **Simple stats.** `getStats` reads up to 20,000 recent events for the requested range and aggregates them in memory. If there are more, the response is marked `truncated`. The response also carries a 60 s HTTP `Cache-Control` header, so refreshes don't re-read Firestore.
-- **Testable backend.** Handlers depend on small interfaces, so tests use fakes. Only `firestoreStore.ts` implements the Firestore calls.
-- **Dashboard.** React, Vite and Recharts. Data logic lives in plain functions (`insights.ts`, `format.ts`) with unit tests. The API response is shape-checked at runtime, so a backend mismatch shows a clear error instead of breaking a chart.
+- `collectAnalytics` accepts analytics events.
+- `getStats` returns data for the dashboard.
 
-### Validation rules and limits
+Firestore has two top-level collections:
 
-| Rule | Value |
-| --- | --- |
-| Event age | not older than 30 days |
-| Clock skew allowed (future) | 10 minutes |
-| `eventId`, `sessionId`, `runId` | 1–128 characters, only `A-Z a-z 0-9 _ -` (they become Firestore document ids) |
-| `level` | integer ≥ 1 |
-| `score`, `durationMs` | number ≥ 0 |
-| `progress` | number from 0 to 1 |
-| Unknown fields | removed before saving |
+- `sessions` stores game sessions.
+- `runs` stores game runs.
 
-### Gameplay analytics schema
+#### Sessions and runs
 
-Every event has these fields:
+A session is the full time a player has the game open. It starts when the game is ready. It ends when the player closes or leaves the page.
 
-| Field | Type | Meaning |
+A run is one gameplay attempt. It starts when the player begins playing. It ends when the player completes the level, fails, quits, or closes the page.
+
+One session can contain many runs:
+
+```text
+Session starts
+  Run 1 -> player hits a wall
+  Run 2 -> player completes the level
+  Run 3 -> player quits
+Session ends
+```
+
+Their Firestore document shapes are:
+
+```ts
+type SessionDocument = {
+  sessionId: string;
+  startTime: number;
+  endTime: number | null;
+  runsPlayed: number;
+};
+
+type RunDocument = {
+  sessionId: string;
+  runId: string;
+  level: number;
+  startTime: number;
+  endTime: number | null;
+  score: number;
+  status: 'IN_PROGRESS' | 'SUCCESS' | 'FAIL_WALL' | 'FAIL_SELF' | 'QUIT';
+};
+```
+
+Each run uses `sessionId` to link to its session. All times are epoch milliseconds. The source types are in [`src/shared/analyticsDocument.ts`](src/shared/analyticsDocument.ts).
+
+`collectAnalytics` accepts one command in each `POST` request:
+
+- `SESSION_STARTED`
+- `SESSION_ENDED`
+- `RUN_STARTED`
+- `RUN_ENDED`
+
+The request types are in [`src/shared/analyticsRequest.ts`](src/shared/analyticsRequest.ts).
+
+A successful response reports `created`, `updated`, or `duplicate`. Invalid input returns `400`. Conflicting data returns `409`. An unexpected error returns `500`.
+
+Firestore writes use transactions. Duplicate commands are safe. Commands may also arrive out of order. An end command can create a missing start document. `runsPlayed` increases only once for each finished run.
+
+The browser cannot access Firestore directly. Only the backend uses the Firebase Admin SDK.
+
+### Analytics write flow
+
+The write flow starts with a game state change:
+
+```text
+SnakeGame
+  -> GameController
+  -> EventBus
+  -> AnalyticsCollector
+  -> HttpAnalyticsClient
+  -> collectAnalytics
+  -> handleCollectAnalytics
+  -> FirestoreAnalyticsStore
+  -> Firestore
+```
+
+#### Game events
+
+[`GameController`](src/application/GameController.ts) watches game snapshots. Its `handleSnapshot()` method compares the old state with the new state. It emits typed events through `EventBus`.
+
+The main analytics events are:
+
+- `ready` starts a session.
+- `runStarted` starts a run.
+- `scoreChanged` updates the current score in memory.
+- `runEnded` finishes a run.
+
+#### Collecting data
+
+[`AnalyticsCollector`](src/application/analytics/AnalyticsCollector.ts) listens to these events. Its `connect()` method adds the listeners.
+
+The collector creates one session ID. It also creates a new run ID for every run.
+
+On `ready`, it creates a session with `endTime: null`. On `runStarted`, it creates a run with `status: IN_PROGRESS`. On `scoreChanged`, it updates the score in memory. It does not send a request for every score change.
+
+On `runEnded`, `finishRun()` adds the final score, time, and status. The status can be `SUCCESS`, `FAIL_WALL`, `FAIL_SELF`, or `QUIT`.
+
+`endSession()` runs when the page closes. It marks an active run as `QUIT`. It then adds the session end time.
+
+#### Sending data
+
+[`AnalyticsClient`](src/application/analytics/AnalyticsClient.ts) is the transport interface. It has `trackSession()` and `trackRun()` methods.
+
+There are three clients:
+
+- `HttpAnalyticsClient` sends HTTP requests.
+- `ConsoleAnalyticsClient` writes data to the browser console.
+- `NoopAnalyticsClient` ignores the data.
+
+`HttpAnalyticsClient.trackSession()` creates session commands. `trackRun()` creates run commands. The private `post()` method sends each command to `VITE_ANALYTICS_URL`.
+
+Each command is sent at once. The request uses `keepalive` to help requests finish while the page is closing.
+
+#### Handling writes
+
+The Firebase function is in [`backend/functions/src/index.ts`](backend/functions/src/index.ts). `collectAnalytics` checks the body size. It then calls `handleCollectAnalytics()`.
+
+[`handleCollectAnalytics()`](backend/functions/src/handler.ts) accepts only `POST`. It parses the body. It calls `validateAnalyticsRequest()`. It then calls `store.apply()`.
+
+[`validateAnalyticsRequest()`](backend/functions/src/analyticsValidation.ts) checks all input. It checks IDs, fields, times, scores, levels, and statuses.
+
+[`createFirestoreAnalyticsStore()`](backend/functions/src/firestoreStore.ts) creates the Firestore store. Its `apply()` method selects one transaction:
+
+- `applySessionStarted()` creates a session.
+- `applySessionEnded()` finishes a session.
+- `applyRunStarted()` creates an active run.
+- `applyRunEnded()` finishes a run and updates `runsPlayed`.
+
+The transactions check existing data first. The same command can be sent again safely. Different data with the same ID causes a conflict.
+
+### Analytics read flow
+
+The dashboard reads summary data. It never receives raw session or run documents.
+
+```text
+Dashboard App
+  -> useStats
+  -> fetchStats
+  -> getStats
+  -> handleGetStats
+  -> FirestoreStatsSource
+  -> computeStats
+  -> Dashboard components
+```
+
+[`useStats()`](dashboard/src/useStats.ts) loads the selected date range. It refreshes the data every 30 seconds while the tab is visible. It keeps the old data if a background refresh fails.
+
+[`fetchStats()`](dashboard/src/api/stats.ts) sends a `GET` request. The dashboard offers 7-day, 30-day, and 90-day ranges. It checks the response before returning it to React.
+
+The `getStats` Firebase function calls [`handleGetStats()`](backend/functions/src/statsHandler.ts). This handler checks the HTTP method and the `days` value. The default is 7 days. The maximum is 90 days.
+
+[`createFirestoreStatsSource()`](backend/functions/src/firestoreStatsSource.ts) creates the Firestore reader. Its `load()` method reads sessions and runs in parallel. It filters by `startTime`.
+
+[`computeStats()`](backend/functions/src/stats.ts) builds the response. It calculates:
+
+- Total sessions and runs.
+- Finished runs.
+- Completion rate.
+- Average score and duration.
+- Sessions and runs by day.
+- Results by level.
+- Wall and self-collision failures.
+
+## Famobi SDK integration
+
+The page loads the Famobi SDK from `init.js` in `index.html`. [`public/boot.js`](public/boot.js) passes `game.js` to `GameInterface.init()`. The game starts after SDK setup is complete.
+
+To verify the integration, run the game with browser DevTools open:
+
+| Test | Steps | Expected result |
 | --- | --- | --- |
-| `eventId` | string | Unique per event (UUID). Used as the Firestore document id. |
-| `name` | string | One of the event names below. |
-| `timestamp` | number | When it happened, epoch ms, player's clock. |
-| `sessionId` | string | One per page load (UUID). |
+| SDK loaded | Inspect Network and Console. | `init.js` and `game-interface.js` load and the SDK logs startup. |
+| SDK initialized | Inspect Console during startup. | `GameInterface.init()` is called before the game starts. |
+| SDK controls loading | Open with `?holdInit=1`, then click **START** on the SDK overlay. | `game.js` loads only after clicking **START**. |
+| Game waits for SDK | Open with `?holdInit=1`. | Gameplay starts only after initialization is released. |
 
-Optional fields, and which events use them (**R** = required, **O** = optional, empty = not allowed):
+The loading overlay and retry button belong to the game. The game reports loading progress through `GameInterface.sendPreloadProgress`.
 
-| Event | When it is sent | `runId` | `level` | `outcome` | `failureReason` | `score` | `progress` | `durationMs` | `pauseSource` |
-| --- | --- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
-| `session_start` | The game is ready | | | | | | | | |
-| `run_start` | A run begins | R | R | | | | | | |
-| `score_update` | Score goes up during a run | R | R | | | R | | | |
-| `run_pause` | Run paused | R | R | | | | | | O |
-| `run_resume` | Run resumed | R | R | | | | | | O |
-| `run_end` | Run finished, or page hidden mid-run | R | R | R | O | R | R | R | |
+## Project structure
 
-Allowed values:
+- `src/game/` contains the game, levels, and Phaser scene.
+- `src/application/GameController.ts` controls the game and emits events.
+- `src/application/platform/` contains the Famobi SDK adapter.
+- `src/application/analytics/` collects and sends analytics.
+- `backend/functions/` validates requests and uses Firestore.
+- `dashboard/` contains the React analytics dashboard.
+- `src/core/` contains the event bus, audio, and local game storage.
+- `public/boot.js` loads the game through Famobi.
 
-- `outcome`: `complete` (level cleared), `fail` (player died), `quit` (left the run or closed the page).
-- `failureReason`: `wall`, `snake` (hit its own trail), `obstacle`, `external`. Only allowed when `outcome` is `fail`.
-- `pauseSource`: `player` or `system` (for example the tab lost focus).
-- `runId` has the form `<sessionId>-<run number>` and links `run_start` to its `run_end`.
+## Assumptions and limitations
 
-Example:
+### Assumptions
 
-```json
-{
-  "eventId": "7c1f0c52-6f1e-4c8e-9a53-0d6d6f6c1a11",
-  "name": "run_end",
-  "timestamp": 1760000042000,
-  "sessionId": "a3b9c1d2-0e4f-4a6b-8c7d-1e2f3a4b5c6d",
-  "runId": "a3b9c1d2-0e4f-4a6b-8c7d-1e2f3a4b5c6d-3",
-  "level": 2,
-  "outcome": "fail",
-  "failureReason": "wall",
-  "score": 140,
-  "progress": 0.6,
-  "durationMs": 42000
-}
-```
+- One page lifecycle creates one session. A reload creates a new session.
+- Only one run is active at a time. Game events arrive in the correct order.
+- The browser creates the IDs and timestamps. All reporting days use UTC.
+- Date ranges use `startTime`. An `IN_PROGRESS` run counts as a start, but not as a finished run.
+- Obstacles count as wall failures. External endings count as quits.
+- Analytics is anonymous. There is no player or account ID.
 
-## Assumptions and known limitations
+### Limitations
 
-- Local only. There is no deployment setup for a real Firebase project.
-- The endpoint is open to anyone. `collectEvents` and `getStats` need no credentials and accept requests from any origin (`cors: true`). Anyone who finds the URL can send valid-looking events, which inflates the stats and adds Firestore write cost, and there is no rate limit beyond `maxInstances: 10`. This is fine on the emulator. For production, add authentication or App Check, rate limiting, and a fixed list of allowed origins.
-- Players are anonymous. A session id is generated in the browser, and no personal data is collected.
-- `getStats` reads events from Firestore on each request (cached for 60 s) and does the aggregation in memory. This is fine for demo volumes. A large dataset would need pre-aggregated counters.
-- The dashboard refreshes by polling, not by live updates.
-- Emulator data is lost when the emulators stop.
-- Outside the Famobi host the Famobi SDK logs an error in the console. The game still works.
-- Analytics queue is shared across tabs of the same origin through one localStorage key, with last-writer-wins saves. If one tab removes its sent events, it can also drop events that another tab still holds in memory but has not sent yet. If that tab closes or crashes before sending them, those events are lost. Fix: one key per tab, or merge on load.
-
-## License
-
-MIT
+- Delivery is best effort. There is no local storage, batching, retry queue, or offline recovery. `keepalive` cannot guarantee delivery.
+- Analytics errors are only logged. They never stop the game, but failed events may be lost.
+- Only one active run is stored in memory. A second start event would replace it.
+- Final data cannot be corrected. A different result for the same finished run returns a conflict.
+- The write endpoint is public and has no authentication. Valid-looking fake events are possible.
+- Browser clocks may be wrong. This can place data in the wrong reporting day.
+- Stats aggregate at most 20,000 sessions and 20,000 runs. Each query reads one extra document to detect truncation. This is an estimated safety cap for response time, memory use, and Firestore cost. Over 90 days, it allows about `20,000 / 90 = 222` runs per day before run results are truncated. The value is not based on production traffic or benchmarks. There is no pagination or pre-aggregation.
+- Session and run queries are separate. A write between them can create a short-lived mismatch.
+- The dashboard polls every 30 seconds. Backend responses may be cached for 60 seconds.
+- Failure categories are limited. Walls and obstacles share one status. Quits and external endings share one status.
+- A missing `VITE_ANALYTICS_URL` in production disables collection through `NoopAnalyticsClient`.
