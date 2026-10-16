@@ -10,14 +10,14 @@ export const RunsOverTime = ({ stats }: { stats: StatsResponse }) => {
   return (
     <ChartCard
       title="Activity per day"
-      question="Is play growing or fading? Sessions are visits, runs are attempts; runs per session shows how hooked visitors are."
+      question="Is play growing or fading? Sessions are visits, runs are attempts."
       table={{
         columns: ['Day (UTC)', 'Sessions', 'Runs'],
         rows: stats.byDay.map((day) => [day.date, String(day.sessions), String(day.runs)])
       }}
     >
       <div className="chart" role="img" aria-label="Line chart of sessions and runs per day">
-        <ResponsiveContainer width="100%" height={260}>
+        <ResponsiveContainer width="100%" height={180}>
           <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
             <CartesianGrid vertical={false} {...GRID} />
             <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={false} minTickGap={24} />

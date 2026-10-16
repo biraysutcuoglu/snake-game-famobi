@@ -25,7 +25,7 @@ export const FailureReasons = ({ stats }: { stats: StatsResponse }) => {
         <p className="muted">No failed runs in this period.</p>
       ) : (
         <div className="chart" role="img" aria-label="Bar chart of failed runs by reason">
-          <ResponsiveContainer width="100%" height={200}>
+          <ResponsiveContainer width="100%" height={100}>
             <BarChart data={data} layout="vertical" margin={{ top: 4, right: 24, bottom: 0, left: 8 }}>
               <CartesianGrid horizontal={false} {...GRID} />
               <XAxis type="number" allowDecimals={false} tick={AXIS_TICK} tickLine={false} axisLine={false} />

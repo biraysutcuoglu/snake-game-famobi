@@ -4,7 +4,15 @@ import { StatsError, fetchStats, isStatsResponse } from './stats';
 
 const valid = {
   range: { from: 1, to: 2, days: 7 },
-  totals: { sessions: 1, runs: 1, finishedRuns: 0, completionRate: null, avgDurationMs: null, avgScore: null },
+  totals: {
+    sessions: 1,
+    runs: 1,
+    avgRunsPerSession: 1,
+    finishedRuns: 0,
+    completionRate: null,
+    avgSessionDurationMs: null,
+    avgScore: null
+  },
   byDay: [],
   byLevel: [],
   failureReasons: { wall: 0, self: 0 },
@@ -19,7 +27,14 @@ describe('isStatsResponse', () => {
     expect(isStatsResponse(valid)).toBe(true);
   });
 
-  it.each([null, 'x', {}, { ...valid, byDay: undefined }, { ...valid, truncated: 'no' }])(
+  it.each([
+    null,
+    'x',
+    {},
+    { ...valid, totals: { ...valid.totals, avgRunsPerSession: undefined } },
+    { ...valid, byDay: undefined },
+    { ...valid, truncated: 'no' }
+  ])(
     'rejects %j',
     (value) => {
       expect(isStatsResponse(value)).toBe(false);

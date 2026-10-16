@@ -49,6 +49,12 @@ describe('getStats (emulator)', () => {
       score: 40,
       status: 'FAIL_SELF'
     });
+    await post({
+      type: 'SESSION_ENDED',
+      sessionId: SESSION_ID,
+      startTime: sessionStartTime,
+      endTime: sessionStartTime + 50_000
+    });
   });
 
   it('aggregates the session and run collections', async () => {
@@ -59,12 +65,16 @@ describe('getStats (emulator)', () => {
     expect(stats.totals).toMatchObject({
       sessions: 1,
       runs: 2,
+      avgRunsPerSession: 2,
       finishedRuns: 2,
       completionRate: 0.5,
-      avgDurationMs: 15_000,
+      avgSessionDurationMs: 50_000,
       avgScore: 80
     });
-    expect(stats.byLevel.map((level: { level: number }) => level.level)).toEqual([1, 2]);
+    expect(stats.byLevel).toMatchObject([
+      { level: 1, avgRunDurationMs: 20_000 },
+      { level: 2, avgRunDurationMs: 10_000 }
+    ]);
     expect(stats.failureReasons).toEqual({ wall: 0, self: 1 });
     expect(stats.byDay).toHaveLength(7);
     expect(stats.truncated).toBe(false);

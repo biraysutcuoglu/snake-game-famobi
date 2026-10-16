@@ -8,11 +8,15 @@ export type StatsTotals = {
   sessions: number;
   /** Runs whose startTime is in the range. */
   runs: number;
+  /** Runs belonging to sessions that started in the range, divided by those sessions. */
+  avgRunsPerSession: number | null;
   /** Runs with a terminal status; the base for the rates below. */
   finishedRuns: number;
   /** complete / finishedRuns, 0..1. Null when no run has ended. */
   completionRate: number | null;
-  avgDurationMs: number | null;
+  /** Average duration of sessions that have an endTime. */
+  avgSessionDurationMs: number | null;
+  /** Average score from successful or failed runs. Quit and in-progress runs are excluded. */
   avgScore: number | null;
 };
 
@@ -31,6 +35,9 @@ export type StatsLevel = {
   quit: number;
   /** complete / (complete + fail + quit), 0..1. Null when no run has ended. */
   completionRate: number | null;
+  /** Average duration of finished runs at this level. */
+  avgRunDurationMs: number | null;
+  /** Average score from successful or failed runs at this level. */
   avgScore: number | null;
 };
 
