@@ -35,9 +35,9 @@ describe('fetchStats', () => {
       return new Response(JSON.stringify(valid));
     }) as unknown as typeof fetch;
 
-    const stats = await fetchStats({ days: 30, baseUrl: 'http://x/getStats', fetchImpl });
+    const stats = await fetchStats({ days: 90, baseUrl: 'http://x/getStats', fetchImpl });
 
-    expect(requested).toBe('http://x/getStats?days=30');
+    expect(requested).toBe('http://x/getStats?days=90');
     expect(stats.totals.runs).toBe(1);
   });
 
