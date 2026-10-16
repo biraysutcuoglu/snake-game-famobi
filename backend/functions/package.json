@@ -9,8 +9,8 @@
     "sync-shared": "node scripts/sync-shared.mjs",
     "build": "pnpm run sync-shared && tsc",
     "typecheck": "pnpm run sync-shared && tsc --noEmit",
-    "test": "pnpm run sync-shared && vitest run src",
-    "test:integration": "pnpm run build && firebase emulators:exec --only functions,firestore --project demo-neon-snake \"vitest run test/\"",
+    "test": "pnpm run sync-shared && vitest run test/unit",
+    "test:integration": "pnpm run build && firebase emulators:exec --only functions,firestore --project demo-neon-snake \"vitest run test/integration\"",
     "emulators": "pnpm run build && firebase emulators:start --project demo-neon-snake"
   },
   "dependencies": {

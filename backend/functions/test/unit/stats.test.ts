@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { RunDocument, RunStatus, SessionDocument } from './shared/analyticsDocument';
-import { computeStats } from './stats';
+import type { RunDocument, RunStatus, SessionDocument } from '../../src/shared/analyticsDocument';
+import { computeStats } from '../../src/stats';
 
 const DAY = 24 * 60 * 60 * 1000;
 const TO = Date.UTC(2025, 9, 14, 12);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { validateAnalyticsRequest } from './analyticsValidation';
+import { validateAnalyticsRequest } from '../../src/analyticsValidation';
 
 const NOW = 2_000_000;
 const SESSION_ID = '11111111-1111-4111-8111-111111111111';

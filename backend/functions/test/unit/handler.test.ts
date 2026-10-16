@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { AnalyticsConflictError, handleCollectAnalytics, type AnalyticsStore } from './handler';
+import { AnalyticsConflictError, handleCollectAnalytics, type AnalyticsStore } from '../../src/handler';
 
 const SESSION_ID = '11111111-1111-4111-8111-111111111111';
 const request = { type: 'SESSION_STARTED' as const, sessionId: SESSION_ID, startTime: 100 };

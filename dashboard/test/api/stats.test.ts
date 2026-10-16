@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { StatsError, fetchStats, isStatsResponse } from './stats';
+import { StatsError, fetchStats, isStatsResponse } from '../../src/api/stats';
 
 const valid = {
   range: { from: 1, to: 2, days: 7 },

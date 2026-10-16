@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatDay, formatDuration, formatPercent, formatRunsPerSession, formatScore } from './format';
+import { formatDay, formatDuration, formatPercent, formatRunsPerSession, formatScore } from '../../src/format';
 
 describe('format', () => {
   it('shows a dash when there is no data', () => {

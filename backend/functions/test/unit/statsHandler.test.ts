@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import type { RunDocument, SessionDocument } from './shared/analyticsDocument';
+import type { RunDocument, SessionDocument } from '../../src/shared/analyticsDocument';
 import {
   MAX_DAYS,
   MAX_DOCUMENTS_PER_COLLECTION,
   handleGetStats,
   type StatsSource
-} from './statsHandler';
+} from '../../src/statsHandler';
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.UTC(2025, 9, 14, 12);

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { EventBus } from '../../core/events/EventBus';
-import type { RunDocument, SessionDocument } from '../../shared/analyticsDocument';
-import type { GameController } from '../GameController';
-import type { GameEventMap } from '../gameEvents';
-import { AnalyticsCollector } from './AnalyticsCollector';
-import type { AnalyticsClient } from './AnalyticsClient';
+import type { GameController } from '../../../src/application/GameController';
+import { AnalyticsCollector } from '../../../src/application/analytics/AnalyticsCollector';
+import type { AnalyticsClient } from '../../../src/application/analytics/AnalyticsClient';
+import type { GameEventMap } from '../../../src/application/gameEvents';
+import { EventBus } from '../../../src/core/events/EventBus';
+import type { RunDocument, SessionDocument } from '../../../src/shared/analyticsDocument';
 
 const setup = () => {
   const sessions: SessionDocument[] = [];

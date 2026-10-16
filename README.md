@@ -6,6 +6,7 @@ A browser snake game. It uses Phaser 3, TypeScript, and Vite. It also uses the F
 
 - [Install and run](#install-and-run)
 - [Testing the complete flow](#testing-the-complete-flow)
+  - [Automated test coverage](#automated-test-coverage)
 - [Architecture](#architecture)
   - [Analytics backend](#analytics-backend)
     - [Sessions and runs](#sessions-and-runs)
@@ -57,7 +58,7 @@ http://127.0.0.1:5001/demo-neon-snake/us-central1/getStats
 
 The root `.env.development` sets `VITE_ANALYTICS_URL`. `dashboard/.env.development` sets `VITE_STATS_URL`. Both point to the local backend. Set these variables for deployed builds too.
 
-Run checks and builds:
+Run checks, tests, and builds:
 
 ```bash
 pnpm check
@@ -68,15 +69,18 @@ pnpm backend:build
 pnpm backend:test:integration
 pnpm dashboard:test
 pnpm dashboard:build
+pnpm test:e2e
 ```
 
 Run `pnpm preview` to preview an existing production build.
 
 `pnpm backend:test:integration` starts and stops its own Firebase emulators. Stop any emulators started with `pnpm emulators` before running it to avoid port conflicts.
 
+Before the first end-to-end run, install Playwright's browser with `pnpm exec playwright install chromium`. The end-to-end test starts the emulators, game, and dashboard when needed. It clears data from the local Firestore emulator so that its assertions are deterministic.
+
 ## Testing the complete flow
 
-Start the local game, Firebase emulators, and dashboard as described above. Then:
+For a manual check, start the local game, Firebase emulators, and dashboard as described above. Then:
 
 1. Play several runs. Include a success, a failure, a quit, and different levels.
 2. Close the game page to trigger the current run and session end events. Confirm that they reach Firestore.
@@ -85,7 +89,15 @@ Start the local game, Firebase emulators, and dashboard as described above. Then
 
 Also complete the checks in [Famobi SDK integration](#famobi-sdk-integration).
 
-The backend integration test automates the HTTP and Firestore part of this flow. A future browser test could automate the game actions and dashboard checks too.
+The backend integration test automates the HTTP and Firestore part of this flow. `pnpm test:e2e` automates one complete path. It starts a game in a browser, records a failed run, waits for the backend totals, and verifies the dashboard output.
+
+### Automated test coverage
+
+- `pnpm test` runs the game unit tests in `test/unit/`. They cover analytics collection and request creation.
+- `pnpm backend:test` runs the backend unit tests in `backend/functions/test/unit/`. They cover validation, handlers, Firestore operations, and statistics.
+- `pnpm backend:test:integration` runs the tests in `backend/functions/test/integration/`. They send real HTTP requests through Firebase emulators and check Firestore.
+- `pnpm dashboard:test` runs the tests in `dashboard/test/`. They cover API parsing, formatting, React rendering, polling, and tab visibility behavior.
+- `pnpm test:e2e` runs the Playwright tests in `e2e/`. They cover the complete browser-to-dashboard flow.
 
 ## Architecture
 
@@ -321,14 +333,30 @@ The loading overlay and retry button belong to the game. The game reports loadin
 
 ## Project structure
 
-- `src/game/` contains the game, levels, and Phaser scene.
-- `src/application/GameController.ts` controls the game and emits events.
-- `src/application/platform/` contains the Famobi SDK adapter.
-- `src/application/analytics/` collects and sends analytics.
-- `backend/functions/` validates requests and uses Firestore.
-- `dashboard/` contains the React analytics dashboard.
-- `src/core/` contains the event bus, audio, and local game storage.
-- `public/boot.js` loads the game through Famobi.
+Production code and test code are kept in separate folders. Each application keeps its own tests.
+
+```text
+src/                              Game production code
+  application/                    Controller, platform, and analytics logic
+  core/                           Event bus, audio, and local storage
+  game/                           Game rules, levels, input, and Phaser scene
+  shared/                         Analytics request and document types
+test/unit/                        Game unit tests
+  analytics/                     Analytics client and collector tests
+
+backend/functions/
+  src/                            Firebase handlers, validation, storage, and stats
+  test/unit/                      Backend unit tests
+  test/integration/               Firebase emulator integration tests
+
+dashboard/
+  src/                            React dashboard production code
+  test/                           API, utility, hook, and component tests
+    fixtures/                     Shared dashboard test data
+
+e2e/                              Playwright browser-to-dashboard tests
+public/boot.js                    Loads the game through the Famobi SDK
+```
 
 ## Assumptions and limitations
 

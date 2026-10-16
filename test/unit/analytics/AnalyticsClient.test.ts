@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { RunDocument, SessionDocument } from '../../shared/analyticsDocument';
-import { HttpAnalyticsClient } from './AnalyticsClient';
+import type { RunDocument, SessionDocument } from '../../../src/shared/analyticsDocument';
+import { HttpAnalyticsClient } from '../../../src/application/analytics/AnalyticsClient';
 
 const endpoint = 'http://localhost/collectAnalytics';
 const session: SessionDocument = {

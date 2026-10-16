@@ -18,12 +18,15 @@
     "dashboard:install": "pnpm --dir dashboard install",
     "dashboard:dev": "pnpm --dir dashboard dev",
     "dashboard:build": "pnpm --dir dashboard build",
-    "dashboard:test": "pnpm --dir dashboard test"
+    "dashboard:test": "pnpm --dir dashboard test",
+    "e2e:game": "pnpm run build:dev && vite preview --host 127.0.0.1 --port 4173 --strictPort",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "phaser": "3.90.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
     "vitest": "^5.0.4"

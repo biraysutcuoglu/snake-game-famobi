@@ -5,6 +5,6 @@ export default defineConfig({
   plugins: [react()],
   base: './',
   test: {
-    include: ['src/**/*.test.ts']
+    include: ['test/**/*.test.{ts,tsx}']
   }
 });
